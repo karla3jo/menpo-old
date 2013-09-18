@@ -7,6 +7,7 @@ from pybug.base import Vectorizable
 from skimage.morphology import diamond, binary_erosion
 import itertools
 from pybug.visualize.base import Viewable, ImageViewer
+import scipy.linalg
 
 
 class AbstractImage(Vectorizable, Landmarkable, Viewable):
@@ -542,10 +543,14 @@ class Image(AbstractImage):
     # TODO: can we do this mathematically and consistently ourselves?
     def as_greyscale(self):
         r"""
-        Returns a greyscale copy of the image. This uses PIL in order to
-        achieve this and so is only guaranteed to work for 3-channel 2D images.
-        The output image is guaranteed to have 1 channel. If a single channel
+        Returns a greyscale copy of the image. If a single channel
         image is passed in, then this method returns a copy of the image.
+
+        Calculates the luminance using the CCIR 601 formula
+
+        ```
+            Y' = 0.299 R' + 0.587 G' + 0.114 B'
+        ```
 
         Returns
         -------
@@ -560,13 +565,17 @@ class Image(AbstractImage):
         """
         if self.n_channels == 1:
             return Image(self.pixels, self.mask.pixels)
-        if self.n_channels != 3 or self.n_dims != 2:
+        if self.n_channels != 3:
             raise DimensionalityError("Trying to perform RGB-> greyscale "
-                                      "conversion on a non-2D-RGB Image.")
+                                      "conversion on a non-RGB Image.")
 
-        pil_image = self.as_PILImage()
-        pil_bw_image = pil_image.convert('L')
-        return Image(pil_bw_image, mask=self.mask.pixels)
+        # Invert the transformation matrix to get more precise values
+        T = scipy.linalg.inv(np.array([[1.0, 0.956, 0.621],
+                                       [1.0, -0.272, -0.647],
+                                       [1.0, -1.106, 1.703]]))
+        coef = T[0, :]
+        grey_pixels = np.dot(self.pixels, coef.T)
+        return Image(grey_pixels, mask=self.mask.pixels)
 
     def as_PILImage(self):
         r"""
