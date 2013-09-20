@@ -1,10 +1,9 @@
 import numpy as np
 from numpy.testing import assert_allclose, assert_equal
-from pybug.exceptions import DimensionalityError
 from nose.tools import raises
 
-from pybug.image.base import BooleanNDImage, MaskedNDImage
-from pybug.image import Image
+from pybug.image import BooleanNDImage
+from pybug.image import RGBImage, IntensityImage
 
 
 def mask_image_3d_test():
@@ -64,48 +63,46 @@ def test_mask_true_bounding_extent():
     mask = BooleanNDImage.blank((64, 14, 51), fill=False)
     mask.mask[0, 13, 5] = True
     mask.mask[5, 2, 4] = True
-    tbe = mask.true_bounding_extent()
+    tbe = mask.bounds_true()
     true_extends = np.array([[0,  5], [2, 13], [4,  5]])
     assert_equal(tbe, true_extends)
 
 
-def test_image_creation():
+def test_rgb_image_creation():
     pixels = np.ones((120, 120, 3))
-    Image(pixels)
+    RGBImage(pixels)
+
+
+def test_intensity_image_creation():
+    pixels = np.ones((120, 120))
+    IntensityImage(pixels)
 
 
 def test_2d_crop_without_mask():
     pixels = np.ones((120, 120, 3))
-    im = Image(pixels)
+    im = RGBImage(pixels)
 
-    cropped_im, translation = im.crop(slice(10, 20), slice(50, 60))
+    cropped_im = im.crop(slice(10, 20), slice(50, 60))
 
     assert(cropped_im.shape == (10, 10))
     assert(cropped_im.n_channels == 3)
     assert(np.alltrue(cropped_im.shape))
-    assert_allclose(translation.as_vector(), [10, 50])
 
 
 def test_2d_crop_with_mask():
     pixels = np.ones((120, 120, 3))
     mask = np.zeros_like(pixels[..., 0])
     mask[10:100, 20:30] = 1
-    im = Image(pixels, mask=mask)
-
-    cropped_im, translation = im.crop(slice(0, 20), slice(0, 60))
-
+    im = RGBImage(pixels, mask=mask)
+    cropped_im = im.crop(slice(0, 20), slice(0, 60))
     assert(cropped_im.shape == (20, 60))
     assert(np.alltrue(cropped_im.shape))
 
-    correct_mask = np.zeros([20, 60])
-    correct_mask[10:, 20:30] = 1
-    assert_allclose(cropped_im.mask.mask, correct_mask)
-    assert_allclose(translation.as_vector(), [0, 0])
 
 
 @raises(AssertionError)
 def test_crop_wrong_arg_num_raises_assertionerror():
     pixels = np.ones((120, 120, 3))
-    im = Image(pixels)
+    im = RGBImage(pixels)
 
     im.crop(slice(0, 20))
