@@ -125,10 +125,9 @@ class RGBImage(Abstract2DImage):
     def __str__(self):
         return ('{} RGBImage. '
                 'Attached mask {:.1%} true'.format(
-                self._str_shape, self.n_dims, self.n_channels,
-                self.mask.proportion_true))
+                self._str_shape, self.mask.proportion_true))
 
-    def as_greyscale(self, mode='average', channel=None):
+    def as_greyscale(self, mode='luminosity', channel=None):
         r"""
         Returns a greyscale version of the RGB image.
 
@@ -171,10 +170,10 @@ class RGBImage(Abstract2DImage):
                                  "in RGB images.")
             pixels = self.pixels[..., channel]
         mask = deepcopy(self.mask)
-        # TODO is this is a safe copy of the landmark dict?
-        landmark_dict = deepcopy(self.landmarks)
         greyscale = IntensityImage(pixels, mask=mask)
-        greyscale.landmarks = landmark_dict
+        greyscale.landmarks = deepcopy(self.landmarks)
+        # make sure the copied landmarks point to the new image
+        greyscale._enforce_ownership_of_all_landmarks()
         return greyscale
 
 
@@ -251,5 +250,4 @@ class IntensityImage(Abstract2DImage):
     def __str__(self):
         return ('{} IntensityImage. '
                 'Attached mask {:.1%} true'.format(
-                self._str_shape, self.n_dims, self.n_channels,
-                self.mask.proportion_true))
+                self._str_shape, self.mask.proportion_true))

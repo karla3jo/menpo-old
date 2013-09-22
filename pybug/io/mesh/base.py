@@ -398,3 +398,4 @@ class WRLImporter(MeshImporter):
         index_list = np.array(index_list)
         # Slice of -1 delimiters
         return index_list[:, 1:]
+
