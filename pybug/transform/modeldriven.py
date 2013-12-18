@@ -385,7 +385,7 @@ class ModelDrivenTransform(AlignableTransform, Composable):
         target: :class:`PointCloud`
             The new target of the composed result
         """
-        return self.transform.apply(other_target)
+        return self.transform.apply_to_target(other_target)
 
     def _compose_after_both(self, mdt_vector):
         r"""

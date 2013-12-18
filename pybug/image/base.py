@@ -1,9 +1,10 @@
 import abc
 import numpy as np
 from copy import deepcopy
+from skimage.transform import pyramid_gaussian
 from pybug.base import Vectorizable
 from pybug.landmark import Landmarkable
-from pybug.transform.affine import Translation, UniformScale
+from pybug.transform.affine import Translation, UniformScale, NonUniformScale
 from pybug.visualize.base import Viewable, ImageViewer
 
 
@@ -592,12 +593,60 @@ class AbstractNDImage(Vectorizable, Landmarkable, Viewable):
         template_mask = BooleanNDImage.blank(transform.apply(self.shape))
         # due to image indexing, we can't just apply the pseduoinverse
         # transform to achieve the scaling we want though!
-        # (consider e.g. a 2x2 image doubled. That's [0-1] -scale> [0-3])
-        # -> need to make the correct inverse by adding 1 to acount
-        inverse_transform = UniformScale(scale + 1, self.n_dims).pseudoinverse
-        # Note here we pass warp_mask to warp_to. In the case of
-        # AbstractNDImages that aren't MaskedNDImages this kwarg will
-        # harmlessly fall through so we are fine.
+        # Consider a 3x rescale on a 2x4 image. Looking at each dimension:
+        #    H 2 -> 6 so [0-1] -> [0-5] = 5/1 = 5x
+        #    W 4 -> 12 [0-3] -> [0-11] = 11/3 = 3.67x
+        # => need to make the correct scale per dimension!
+        shape = np.array(self.shape, dtype=np.float)
+        # scale factors = max_index_after / current_max_index
+        # (note that max_index = length - 1, as 0 based)
+        scale_factors = (scale * shape - 1) / (shape - 1)
+        inverse_transform = NonUniformScale(scale_factors).pseudoinverse
         return self.warp_to(template_mask, inverse_transform,
                             warp_landmarks=True, warp_mask=True,
                             interpolator=interpolator, **kwargs)
+
+    def rescale_to_reference(self, reference_landmarks, group=None,
+                             label=None, interpolator='scipy', **kwargs):
+        r"""
+        Return a copy of this image, rescaled so that the scale of a
+        particular group of landmarks matches the scale of the given
+        reference landmarks.
+        All image information (landmarks, the mask the case of
+        :class:`MaskedNDImage`) is rescaled appropriately.
+
+        Parameters
+        ----------
+        reference_landmarks : float
+            The scale factor.
+        kwargs : dict
+            Passed through to the interpolator. See `pybug.interpolation`
+            for details.
+
+        Returns
+        -------
+        rescaled_image : type(self)
+            A copy of this image, rescaled.
+        """
+
+        # extract landmarks
+        pc = self.landmarks[group][label].lms
+        # compute scale difference between current landmarks and reference
+        # landmarks
+        scale = UniformScale.align(pc, reference_landmarks).as_vector()
+        # rescale all images using previous scales
+        return self.rescale(scale, interpolator=interpolator, **kwargs)
+
+    def gaussian_pyramid(self, max_layer=-1, downscale=2, sigma=None, order=1,
+                         mode='reflect', cval=0):
+        pyramid_iterator = pyramid_gaussian(
+            self.pixels, max_layer=max_layer, downscale=downscale, sigma=sigma,
+            order=order, mode=mode, cval=cval)
+        pyramid = [self.__class__(i.next()) for i in pyramid_iterator]
+
+        # rescale and reassign landmarks if necessary
+        for j, (i, l) in enumerate(zip(pyramid, self.landmarks)):
+            i.landmarks = l
+            transform = UniformScale(downscale ** j, l.n_dims)
+            transform.pseudoinverse.apply_inplace(i.landmarks)
+
