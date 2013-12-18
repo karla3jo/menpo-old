@@ -1,4 +1,5 @@
 import abc
+from numpy.linalg import LinAlgError
 import numpy as np
 from scipy.linalg import solve
 
@@ -114,7 +115,11 @@ class LucasKanade(object):
                                   "implemented yet")
 
     def _gauss_newton_update(self, sd_delta_p):
-        return solve(self._H, sd_delta_p)
+        try:
+            delta_p = solve(self._H, sd_delta_p)
+        except LinAlgError:
+            delta_p = np.zeros_like(sd_delta_p)
+        return delta_p
 
     def _gauss_newton_lp_update(self, sd_delta_p):
         raise NotImplementedError("Gauss-Newton lp-norm optimization not "
