@@ -7,8 +7,10 @@ from pybug.transform.piecewiseaffine import PiecewiseAffineTransform
 from pybug.transform.tps import TPS
 from pybug.lucaskanade.residual import LSIntensity
 from pybug.lucaskanade.appearance import AlternatingInverseCompositional
-from pybug.activeappearancemodel.builder import (build_reference_frame,
-                                                 build_patch_reference_frame)
+from pybug.activeappearancemodel.builder import \
+    build_reference_frame, build_patch_reference_frame, \
+    rescale_to_reference_landmarks, gaussian_pyramid, compute_features, \
+    align_with_noise
 
 
 class AAM(object):
@@ -29,10 +31,34 @@ class AAM(object):
         self.reference_frame = reference_frame
         self.appearance_model_pyramid = appearance_model_pyramid
         self.features = features
+        self._lk_pyramid = None
 
     @property
     def n_levels(self):
         return len(self.appearance_model_pyramid)
+
+    def _feature_pyramid(self, image, reference_landmarks):
+        r"""
+        Fit the AAM to an image using Lucas-Kanade.
+
+        Parameters
+        -----------
+        image:
+
+        Returns
+        -------
+        feature_pyramid:
+        """
+        # rescale object to reference resolution
+        #image = rescale_to_reference_landmarks(image, reference_landmarks)
+        # build gaussian pyramid and reverse it
+        image_pyramid = gaussian_pyramid(
+            image, n_levels=self.n_levels)
+        image_pyramid.reverse()
+        # compute features
+        return [compute_features(i, self.features['type'],
+                                 **self.features['options'])
+                for i in image_pyramid]
 
     def instance(self, shape_weights, appearance_weights, level=0,
                  transform_cls=PiecewiseAffineTransform, patches=False,
@@ -138,7 +164,7 @@ class AAM(object):
         self._lk_pyramid = []
 
         for am, n_s, n_a in zip(self.appearance_model_pyramid, n_shape,
-                              n_appearance):
+                                n_appearance):
 
             global_transform = global_transform_cls(np.eye(3, 3))
             source = self.reference_frame.landmarks['source'].lms
@@ -158,7 +184,7 @@ class AAM(object):
             self._lk_pyramid.append(lk_algorithm(am, residual(),
                                                  md_transform))
 
-    def lk_fit(self, image_pyramid, initial_landmarks, max_iters=20):
+    def _lk_fit(self, image_pyramid, initial_landmarks, max_iters=20):
         r"""
         Fit the AAM to an image using Lucas-Kanade.
 
@@ -188,14 +214,66 @@ class AAM(object):
             target = Scale(2, n_dims=md_transform.n_dims).apply(
                 md_transform.target)
 
-        return md_transform_pyramid
+        return deepcopy(md_transform_pyramid)
 
-    # def feature_pyramid(self, image):
-    #
-    #     image = rescale_to_reference(image, self.shape_model)
-    #
-    #     image_pyramid = gaussian_pyramid(image).reverse()
-    #
-    #     return [compute_features(i, self.feature_space['type'],
-    #                              self.feature_space['options'])
-    #             for i in image_pyramid]
+    def lk_fit_annotated_image(self, image, runs=10, noise_std=0.05,
+                               group='PTS', max_iters=20):
+        r"""
+        Fit the AAM to an image using Lucas-Kanade.
+
+        Parameters
+        -----------
+        image:
+        noise_std: :class:`pybug.shape.PointCloud`
+        group:
+        max_iters: int, optional
+            The number of iterations per pyramidal level
+
+            Default: 20
+
+        Returns
+        -------
+        md_transform_pyramid:
+        """
+
+        feature_pyramid = self._feature_pyramid(image, self.shape_model.mean)
+
+        optimal_transforms = []
+        for _ in range(runs):
+            transform = align_with_noise(
+                self.shape_model.mean, feature_pyramid[0].landmarks[group].lms,
+                noise_std)
+            initial_landmarks = transform.apply(self.shape_model.mean)
+            optimal_transforms.append(self._lk_fit(feature_pyramid,
+                                                   initial_landmarks,
+                                                   max_iters=max_iters))
+
+        return optimal_transforms
+
+    def lk_fit_annotated_database(self, images, runs=10, noise_std=0.5,
+                                  group='PTS', max_iters=20):
+        r"""
+        Fit the AAM to an image using Lucas-Kanade.
+
+        Parameters
+        -----------
+        images:
+        runs:
+        noise_std:
+        group:
+        max_iters:
+
+        Returns
+        -------
+        md_transform_pyramid:
+        """
+        n_images = len(images)
+        optimal_transforms = []
+        for j, i in enumerate(images):
+            optimal_transforms.append(
+                self.lk_fit_annotated_image(i, runs=runs, noise_std=noise_std,
+                                            group=group, max_iters=max_iters))
+            print '- fitting image: {} of {}'.format(j+1, n_images)
+
+        return optimal_transforms
+

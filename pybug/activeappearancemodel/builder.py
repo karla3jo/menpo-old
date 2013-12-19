@@ -194,14 +194,14 @@ def build_patch_mask(image, shape, patch_size):
 
 
 # TODO: Should this be a method in AbstractNDImage?
-def gaussian_pyramid(image, max_layer=-1, downscale=2, sigma=None, order=1,
+def gaussian_pyramid(image, n_levels=None, downscale=2, sigma=None, order=1,
                      mode='reflect', cval=0):
     r"""
 
     Parameters
     ----------
     image:
-    max_layer:
+    n_levels:
     downscale:
     sigma:
     order:
@@ -212,6 +212,12 @@ def gaussian_pyramid(image, max_layer=-1, downscale=2, sigma=None, order=1,
     -------
     image_pyramid:
     """
+
+    if n_levels is None:
+        max_layer = -1
+    else:
+        max_layer = n_levels - 1
+
     image_iterator = pyramid_gaussian(
         image.pixels, max_layer=max_layer, downscale=downscale, sigma=sigma,
         order=order, mode=mode, cval=cval)
@@ -237,7 +243,8 @@ def gaussian_pyramid(image, max_layer=-1, downscale=2, sigma=None, order=1,
     return pyramid
 
 
-# TODO: Should this be a method on SimilarityTransform? and in Transform?
+# TODO: Should this be a method on SimilarityTransform?
+# and in Transforms in general?
 def align_with_noise(source, target, noise_std):
     r"""
 
@@ -254,11 +261,11 @@ def align_with_noise(source, target, noise_std):
     transform = SimilarityTransform.align(source, target)
 
     if noise_std is None:
-        noise_std = np.ones(transform.n_params)
+        noise_std = np.ones(transform.n_parameters)
 
     # sample noise from a normal distribution with mean = 0 and
     # std = noise_std
-    noise = noise_std * np.random.randn(transform.n_params)
+    noise = noise_std * np.random.randn(transform.n_parameters)
 
     # return noisy transform
     return SimilarityTransform.from_vector(transform.as_vector() + noise)
@@ -426,7 +433,7 @@ def aam_builder(images, group='PTS', label='all', interpolator='scipy',
     # TODO:
     print '- Building gaussian pyramids'
     # build gaussian pyramids
-    images_pyramid = [gaussian_pyramid(i, max_layer=n_levels) for i in images]
+    images_pyramid = [gaussian_pyramid(i, n_levels=n_levels) for i in images]
 
     # free memory
     del images, aligned_shapes, gpa, centered_shapes, shapes
@@ -436,7 +443,7 @@ def aam_builder(images, group='PTS', label='all', interpolator='scipy',
     # initialize list of appearance models
     appearance_model_pyramid = []
     # for each level
-    for j in range(n_levels, 0, -1):
+    for j in range(n_levels):
         print ' - Level {}'.format(j)
         # obtain level images
         images_level = [p[j] for p in images_pyramid]
@@ -474,7 +481,8 @@ def aam_builder(images, group='PTS', label='all', interpolator='scipy',
             appearance_model.trim_components(max_appearance_components)
         # add appearance model to the list
         appearance_model_pyramid.append(appearance_model)
-
+    # reverse the list of appearance models
+    appearance_model_pyramid.reverse()
     from pybug.activeappearancemodel.base import AAM
     return AAM(shape_model, reference_frame, appearance_model_pyramid,
                features)
