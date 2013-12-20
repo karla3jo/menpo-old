@@ -290,6 +290,7 @@ def ibug_68_closed_mouth(landmark_group):
     .. [1] http://www.multipie.org/
     """
     group_label = 'ibug_68_closed_mouth'
+    n_points = landmark_group.lms.n_points
 
     if landmark_group.lms.n_points != 68:
         raise LabellingError("{0} mark-up expects exactly 68 "
@@ -309,6 +310,69 @@ def ibug_68_closed_mouth(landmark_group):
     new_landmark_group['leyebrow'] = np.arange(17, 22)
     new_landmark_group['reyebrow'] = np.arange(22, 27)
     new_landmark_group['mouth'] = np.arange(48, 65)
+    new_landmark_group['nose'] = np.arange(27, 36)
+
+    return new_landmark_group
+
+
+def ibug_66_points(landmark_group):
+    """
+    Apply the ibug's "standard" 66 point semantic labels (based on the
+    original semantic labels of multiPIE) to the landmark group.
+
+    The group label will be 'ibug_66_points'.
+
+    The semantic labels applied are as follows:
+
+      - chin
+      - leye
+      - reye
+      - leyebrow
+      - reyebrow
+      - mouth
+      - nose
+
+    Parameters
+    ----------
+    landmark_group: :class:`pybug.landmark.base.LandmarkGroup`
+        The landmark group to apply semantic labels to.
+
+    Returns
+    -------
+    landmark_group : :class:`pybug.landmark.base.LandmarkGroup`
+        New landmark group with group label 'ibug_68_points'. The pointcloud
+        is also copied.
+
+    Raises
+    ------
+    :class:`pybug.landmark.exceptions.LabellingError`
+        If the given landmark group contains less than 68 points
+
+    References
+    ----------
+    .. [1] http://www.multipie.org/
+    """
+    group_label = 'ibug_66_mouth'
+    n_points = landmark_group.lms.n_points
+
+    if landmark_group.lms.n_points != 68:
+        raise LabellingError("{0} mark-up expects exactly 68 "
+                             "points. However, the given landmark group only "
+                             "has {1} points".format(group_label, n_points))
+
+    # Ignore the 3 coincident points (the last 3 points)
+    new_landmarks = copy.deepcopy(landmark_group.lms)
+    new_landmarks.points = new_landmarks.points[:-3]
+    new_landmark_group = LandmarkGroup(
+        landmark_group._target, group_label, new_landmarks,
+        {'all': np.ones(new_landmarks.n_points, dtype=np.bool)})
+
+    new_landmark_group['chin'] = np.arange(17)
+    new_landmark_group['leye'] = np.arange(36, 42)
+    new_landmark_group['reye'] = np.arange(42, 48)
+    new_landmark_group['leyebrow'] = np.arange(17, 22)
+    new_landmark_group['reyebrow'] = np.arange(22, 27)
+    new_landmark_group['mouth'] = np.arange(48, 66)
     new_landmark_group['nose'] = np.arange(27, 36)
 
     return new_landmark_group

@@ -265,10 +265,17 @@ def align_with_noise(source, target, noise_std):
 
     # sample noise from a normal distribution with mean = 0 and
     # std = noise_std
-    noise = noise_std * np.random.randn(transform.n_parameters)
+    param = np.hstack((transform.as_vector()[:1], 0, target.range()
+    ))
+    noise = param * noise_std * np.random.randn(transform
+    .n_parameters)
+
+    param = transform.as_vector()
+    param[1] = 0
+    param += noise
 
     # return noisy transform
-    return SimilarityTransform.from_vector(transform.as_vector() + noise)
+    return SimilarityTransform.from_vector(param)
 
 
 def compute_features(image, feature_type, **kwargs):
@@ -417,8 +424,7 @@ def aam_builder(images, group='PTS', label='all', interpolator='scipy',
             reference_shape, scale=scale, patch_size=patch_size)
         # mask images
         for i, s in zip(images, shapes):
-                mask = build_patch_mask(i, s,
-                                        patch_size=patch_size)
+                mask = build_patch_mask(i, s, patch_size=patch_size)
                 i.mask = BooleanNDImage(mask)
 
     else:

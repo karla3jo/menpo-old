@@ -1,12 +1,14 @@
 from __future__ import division
 import numpy as np
 from copy import deepcopy
-from pybug.transform import Scale, SimilarityTransform
+import matplotlib.pylab as plt
+from pybug.transform .affine import Scale, SimilarityTransform, UniformScale
 from pybug.transform.modeldriven import OrthoMDTransform
 from pybug.transform.piecewiseaffine import PiecewiseAffineTransform
 from pybug.transform.tps import TPS
 from pybug.lucaskanade.residual import LSIntensity
 from pybug.lucaskanade.appearance import AlternatingInverseCompositional
+from pybug.activeappearancemodel.accuracy import compute_error_facesize
 from pybug.activeappearancemodel.builder import \
     build_reference_frame, build_patch_reference_frame, \
     rescale_to_reference_landmarks, gaussian_pyramid, compute_features, \
@@ -60,7 +62,7 @@ class AAM(object):
                                  **self.features['options'])
                 for i in image_pyramid]
 
-    def instance(self, shape_weights, appearance_weights, level=0,
+    def instance(self, shape_weights, appearance_weights, level=-1,
                  transform_cls=PiecewiseAffineTransform, patches=False,
                  patch_size=[16, 16], interpolator='scipy', **warp_kwargs):
         r"""
@@ -81,7 +83,7 @@ class AAM(object):
             Index representing the appearance model to be used to create
             the instance.
 
-            Default: 0
+            Default: -1
         transform_cls: :class:`pybug.transform.base.PureAlignmentTransform`
             Class of transform that should be used to warp the appearance
             instance onto the reference frame defined by the shape instance.
@@ -114,7 +116,7 @@ class AAM(object):
                 shape_instance, patch_size=patch_size)
 
         else:
-            reference_frame = build_reference_frame(shape_instance)[0]
+            reference_frame = build_reference_frame(shape_instance)
 
         # select appearance model
         n_appearance_weights = len(appearance_weights)
@@ -169,7 +171,7 @@ class AAM(object):
             global_transform = global_transform_cls(np.eye(3, 3))
             source = self.reference_frame.landmarks['source'].lms
 
-            sm = deepcopy(self.shape_model)
+            sm = self.shape_model
             if n_shape is not None:
                 sm.n_active_components = n_s
             md_transform = md_transform_cls(sm,
@@ -217,7 +219,8 @@ class AAM(object):
         return deepcopy(md_transform_pyramid)
 
     def lk_fit_annotated_image(self, image, runs=10, noise_std=0.05,
-                               group='PTS', max_iters=20):
+                               group='PTS', max_iters=20, verbose=True,
+                               view=False):
         r"""
         Fit the AAM to an image using Lucas-Kanade.
 
@@ -236,10 +239,15 @@ class AAM(object):
         md_transform_pyramid:
         """
 
+        if verbose:
+            original_landmarks = image.landmarks[group].lms
+
+        scale = 2 ** (self.n_levels-1)
+
         feature_pyramid = self._feature_pyramid(image, self.shape_model.mean)
 
         optimal_transforms = []
-        for _ in range(runs):
+        for j in range(runs):
             transform = align_with_noise(
                 self.shape_model.mean, feature_pyramid[0].landmarks[group].lms,
                 noise_std)
@@ -247,11 +255,28 @@ class AAM(object):
             optimal_transforms.append(self._lk_fit(feature_pyramid,
                                                    initial_landmarks,
                                                    max_iters=max_iters))
+            fitted_landmarks = optimal_transforms[j][-1].target
+
+            image.landmarks['initial_{}'.format(j)] = \
+                UniformScale(scale, 2).apply(initial_landmarks)
+            image.landmarks['fitted_{}'.format(j)] = fitted_landmarks
+
+            if verbose:
+                error = compute_error_facesize(fitted_landmarks.points,
+                                               original_landmarks.points)
+                print ' - run {} of {} with error: {}'.format(j+1, runs,
+                                                              error)
+            if view:
+                image.landmarks['initial_{}'.format(j)].view()
+                image.landmarks['fitted_{}'.format(j)].view()
+                plt.show()
+
 
         return optimal_transforms
 
     def lk_fit_annotated_database(self, images, runs=10, noise_std=0.5,
-                                  group='PTS', max_iters=20):
+                                  group='PTS', max_iters=20, verbose=True,
+                                  view=False):
         r"""
         Fit the AAM to an image using Lucas-Kanade.
 
@@ -270,10 +295,13 @@ class AAM(object):
         n_images = len(images)
         optimal_transforms = []
         for j, i in enumerate(images):
+            if verbose:
+                print '- fitting image {} of {}'.format(j+1, n_images)
+
             optimal_transforms.append(
                 self.lk_fit_annotated_image(i, runs=runs, noise_std=noise_std,
-                                            group=group, max_iters=max_iters))
-            print '- fitting image: {} of {}'.format(j+1, n_images)
+                                            group=group, max_iters=max_iters,
+                                            verbose=verbose, view=view))
 
         return optimal_transforms
 

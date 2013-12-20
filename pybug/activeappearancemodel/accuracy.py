@@ -54,11 +54,13 @@ def plot_ced(fitted_shapes, original_shape, error_type='face_size',
     error_axis = np.arange(0, stop, step)
     proportion_axis = [np.count_nonzero(errors < limit) / n_shapes
                        for limit in error_axis]
+
+    error_median = np.median(errors)
     error_mean = np.mean(errors)
     error_std = np.std(errors)
 
-    text = label + 'mean = {} '.format(error_mean) + 'std = {}'.format(
-        error_std)
+    text = label + '  median = {}  mean = {}  std = {}'.format(
+        error_median, error_mean, error_std)
 
     plt.plot(error_axis, proportion_axis, label=text)
 
@@ -66,4 +68,6 @@ def plot_ced(fitted_shapes, original_shape, error_type='face_size',
     plt.grid(True)
     plt.legend()
     plt.show()
+
+    return errors, error_median, error_mean, error_std
 
