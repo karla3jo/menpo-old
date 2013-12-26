@@ -602,6 +602,12 @@ class AbstractNDImage(Vectorizable, Landmarkable, Viewable):
         # (note that max_index = length - 1, as 0 based)
         scale_factors = (scale * shape - 1) / (shape - 1)
         inverse_transform = NonUniformScale(scale_factors).pseudoinverse
+<<<<<<< HEAD
+=======
+        # Note here we pass warp_mask to warp_to. In the case of
+        # AbstractNDImages that aren't MaskedNDImages this kwarg will
+        # harmlessly fall through so we are fine.
+>>>>>>> new_labels
         return self.warp_to(template_mask, inverse_transform,
                             warp_landmarks=True, warp_mask=True,
                             interpolator=interpolator, **kwargs)
