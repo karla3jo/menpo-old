@@ -116,7 +116,7 @@ class AAM(object):
                 shape_instance, patch_size=patch_size)
 
         else:
-            reference_frame = build_reference_frame(shape_instance)
+            reference_frame = build_reference_frame(shape_instance)[0]
 
         # select appearance model
         n_appearance_weights = len(appearance_weights)
@@ -218,7 +218,7 @@ class AAM(object):
 
         return deepcopy(md_transform_pyramid)
 
-    def lk_fit_annotated_image(self, image, runs=10, noise_std=0.05,
+    def lk_fit_landmarked_image(self, image, runs=10, noise_std=0.05,
                                group='PTS', max_iters=20, verbose=True,
                                view=False):
         r"""
@@ -271,10 +271,9 @@ class AAM(object):
                 image.landmarks['fitted_{}'.format(j)].view()
                 plt.show()
 
-
         return optimal_transforms
 
-    def lk_fit_annotated_database(self, images, runs=10, noise_std=0.5,
+    def lk_fit_landmarked_database(self, images, runs=10, noise_std=0.5,
                                   group='PTS', max_iters=20, verbose=True,
                                   view=False):
         r"""
@@ -299,9 +298,70 @@ class AAM(object):
                 print '- fitting image {} of {}'.format(j+1, n_images)
 
             optimal_transforms.append(
-                self.lk_fit_annotated_image(i, runs=runs, noise_std=noise_std,
+                self.lk_fit_landmarked_image(i, runs=runs,
+                                             noise_std=noise_std,
                                             group=group, max_iters=max_iters,
                                             verbose=verbose, view=view))
 
         return optimal_transforms
+
+    # def initialize_regression(self, levels=None,
+    #                           md_transform_cls=OrthoMDTransform,
+    #                           transform_cls=PiecewiseAffineTransform,
+    #                           global_transform_cls=SimilarityTransform,
+    #                           regression_features=parameters,
+    #                           n_shape=None, n_appearance=None):
+    #     r"""
+    #
+    #     Parameters
+    #     -----------
+    #     md_transform_cls: :class:`pybug.transform.base.modeldriven`
+    #
+    #         Default: OrthoMDTransform
+    #
+    #     transform_cls: :class:`pybug.transform.base.PureAlignmentTransform`
+    #
+    #         Default: PieceWiseAffineTransform
+    #
+    #     global_transform_cls: :class:`pybug.transform.base.affine`
+    #
+    #         Default: SimilarityTransform
+    #
+    #     regression_features:
+    #
+    #         Default: parameters
+    #
+    #     n_shape:
+    #
+    #         Default: None
+    #
+    #     n_appearance:
+    #
+    #         Default: None
+    #
+    #     """
+    #     self._regression_pyramid = []
+    #
+    #     for l in levels:
+    #
+    #         self.regression_appearance_models.append(self
+    #         .appearance_model_pyramid[l])
+    #
+    #         global_transform = global_transform_cls(np.eye(3, 3))
+    #         source = self.reference_frame.landmarks['source'].lms
+    #
+    #         sm = self.shape_model
+    #         if n_shape is not None:
+    #             sm.n_active_components = n_s
+    #         md_transform = md_transform_cls(sm,
+    #                                         transform_cls,
+    #                                         global_transform,
+    #                                         source=source)
+    #
+    #         am = deepcopy(am)
+    #         if n_appearance is not None:
+    #             am.n_active_components = n_a
+    #
+    #         self._lk_pyramid.append(lk_algorithm(am, residual(),
+    #                                              md_transform))
 

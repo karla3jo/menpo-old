@@ -265,10 +265,8 @@ def align_with_noise(source, target, noise_std):
 
     # sample noise from a normal distribution with mean = 0 and
     # std = noise_std
-    param = np.hstack((transform.as_vector()[:1], 0, target.range()
-    ))
-    noise = param * noise_std * np.random.randn(transform
-    .n_parameters)
+    param = np.hstack((transform.as_vector()[:1], 0, target.range()))
+    noise = param * noise_std * np.random.randn(transform.n_parameters)
 
     param = transform.as_vector()
     param[1] = 0
@@ -321,7 +319,7 @@ def aam_builder(images, group='PTS', label='all', interpolator='scipy',
                 patches=False, patch_size=[16, 16], n_levels=3,
                 transform_cls=PiecewiseAffineTransform,
                 features={'type': None, 'options': None},
-                max_shape_components=0.95, max_appearance_components=0.95):
+                max_shape_components=None, max_appearance_components=None):
 
     r"""
 

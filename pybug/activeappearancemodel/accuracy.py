@@ -70,4 +70,3 @@ def plot_ced(fitted_shapes, original_shape, error_type='face_size',
     plt.show()
 
     return errors, error_median, error_mean, error_std
-

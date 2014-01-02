@@ -1,77 +1,35 @@
+from __future__ import division, print_function
+import abc
 import numpy as np
-from pybug.activeappearancemodel.builder import align_with_noise, \
-    gaussian_pyramid, rescale_to_reference_landmarks, \
-    compute_mean_pointcloud, compute_features
+from pybug.transform import SimilarityTransform
 
 
-def build_gaussian_pyramid(images, group='PTS', label='all',
-                           interpolator='scipy', reference_landmarks=None,
-                           scale=1, crop_boundary=0.2, n_levels=3):
-
+def noisy_align(source, target, noise_std=0.05, rotation=False):
     r"""
 
     Parameters
     ----------
-    images:
-    group: str, optional
-
-        Default: 'PTS'
-    label: tr, optional
-
-        Default: 'all'
-    interpolator: str, optional
-
-        Default: 'scipy'
-    reference_landmarks: optional
-
-        Default: None
-    scale: float, optional
-
-        Default: 1
-    crop_boundary: float, optional
-
-
-    n_levels: int, optional
-
-        Default: 3
+    source :
+    target :
+    noise_std:
+    rotation:
 
     Returns
     -------
-    image_pyramid :
+    noisy_transform :
     """
-
-    print '- Cropping images'
-    # crop images around their landmarks
-    for i in images:
-        i.crop_to_landmarks_proportion(crop_boundary, group=group, label=label)
-
-    # TODO:
-    if reference_landmarks is None:
-        print '- Compute reference shape'
-        # extract original shapes
-        shapes = [i.landmarks[group][label].lms for i in images]
-        # define reference shape
-        reference_shape = compute_mean_pointcloud(shapes)
-
-    # TODO:
-    print '- Rescaling images to reference shape'
-    # rescale images so that the scale of their corresponding shapes matches
-    # the scale of the reference shape
-    images = [rescale_to_reference_landmarks(i, reference_shape, scale=1,
-                                             group=group, label=label,
-                                             interpolator=interpolator)
-              for i in images]
-
-    # TODO:
-    print '- Building gaussian pyramids'
-    # build gaussian pyramids
-    images_pyramid = [gaussian_pyramid(i, n_levels=n_levels) for i in images]
-
-    return images_pyramid
+    transform = SimilarityTransform.align(source, target)
+    parameters = transform.as_vector()
+    if not rotation:
+        parameters[1] = 0
+    parameter_range = np.hstack((parameters[:2], target.range()))
+    noise = (parameter_range * noise_std *
+             np.random.randn(transform.n_parameters))
+    parameters += noise
+    return SimilarityTransform.from_vector(parameters)
 
 
-def extract_local_patches(self, group=None, label=None,
-                          patch_size=(16, 16)):
+def extract_local_patches(image, landmarks, patch_size=(24, 24)):
     r"""
 
     Parameters
@@ -85,174 +43,373 @@ def extract_local_patches(self, group=None, label=None,
     -------
     patches :
     """
-
-    pc = self.landmarks[group][label].lms
-
     patch_size = np.array(patch_size)
     patch_half_size = patch_size / 2
     patch_list = []
 
-    for point in pc.points:
+    for point in landmarks.points:
         start = np.floor(point - patch_half_size).astype(int)
         finish = np.floor(point + patch_half_size).astype(int)
         x, y = np.mgrid[start[0]:finish[0], start[1]:finish[1]]
 
         # deal with boundaries
-        x[x > self.shape[0]] = self.shape[0]
-        y[y > self.shape[1]] = self.shape[1]
+        x[x > image.shape[0] - 1] = image.shape[0] - 1
+        y[y > image.shape[1] - 1] = image.shape[1] - 1
         x[x < 0] = 0
         y[y < 0] = 0
 
         # sample patch
-        patch_data = self.pixels[x, y, :]
-        patch_img = self.__class__(patch_data)
+        patch_data = image.pixels[x, y, :]
+        patch_img = image.__class__(patch_data)
         patch_list.append(patch_img)
 
     return patch_list
 
 
-def linear_regression1(Os, Ts):
+# def polynomial_features(features, order=2, bias=True):
+#     r"""
+#
+#     Parameters
+#     ----------
+#     features:
+#     order:
+#     bias:
+#
+#     Returns
+#     -------
+#     polynomial_features:
+#     """
+#     poly_features = features
+#     n_order = features
+#     len_features = features.shape[0]
+#
+#     for _ in range(1, order):
+#         n_order = np.dot(n_order[..., None], features[None, ...])
+#         mask = np.zeros_like(n_order)
+#         n_elements = mask.shape[0]
+#         for j, r in enumerate(mask):
+#             mask[-n_elements:, j] = np.ones(n_elements)
+#             n_elements = np.floor((len_features-1)*n_elements/len_features)
+#             if n_elements == 0 or j == len_features-1:
+#                 break
+#         n_order = n_order[mask == 1]
+#
+#         poly_features = np.hstack((n_order, poly_features))
+#
+#     if bias:
+#         poly_features = np.hstack((poly_features, 1))
+#
+#     return poly_features
 
-    OOs = np.dot(Os.T, Os)
-    OOs = (OOs + OOs.T) / 2
-    OTs = np.dot(Os.T, Ts)
-    w = np.linalg.solve(OOs, OTs)
 
-    return w, OOs
-
-
-def linear_regression2(Os, Ts):
-
-    # number of independent variables
-    M = Os.shape[1]
-    # number of dependent variables
-    K = Ts.shape[1]
-
-    OOs = np.zeros(M, M)
-    OTs = np.zeros(M, K)
-
-    for x, y in enumerate(Os, Ts):
-
-        OOs = OOs + np.dot(x, x.T)
-        XYs = XYs + np.dot(x, y.T)
-
-    OOs = (OOs + OOs.T) / 2
-    w = np.linalg.solve(OOs, OTs)
-
-    return w, OOs
-
-
-def train_regressor_aam(aam, images, group='PTS', label='all',
-                        interpolator='scipy', reference_landmarks=None,
-                        scale=1, crop_boundary=0.2,
-                        n_levels=3, levels=[0, 1 ,2],
-                        n_shapes=[3, 6, 12], n_appearances=[250, 250, 250]):
-
+def polynomial_features(features, order=2, bias=True):
     r"""
 
     Parameters
     ----------
-    images:
-    group: str, optional
-
-        Default: 'PTS'
-    label: tr, optional
-
-        Default: 'all'
-    interpolator: str, optional
-
-        Default: 'scipy'
-    reference_landmarks: optional
-
-        Default: None
-    scale: float, optional
-
-        Default: 1
-    crop_boundary: float, optional
-
-        Default: 0.2
-    reference_frame_boundary: int, optional
-
-        Default: 3
-    triangulation: dictionary, optional
-
-        Default: None
-    n_levels: int, optional
-
-        Default: 3
-    transform_cls: optional
-
-        Default: PieceWiseAffine
-    feature_space: dictionary, optional
-
-        Default: None
-    max_shape_components: float, optional
-
-        Default: 0.95
-    max_appearance_components: float, optional
-
-        Deafult: 0.95
-
+    features:
+    order:
+    bias:
 
     Returns
     -------
-    aam : :class:`pybug.activeappearancemodel.AAM`
+    polynomial_features:
     """
+    poly_features = features
+    n_order = features
 
-    feature_pyramid = [aam._feature_pyramid(f) for f in images]
+    for _ in range(1, order):
+        n_order = np.dot(n_order[..., None], features[None, ...])
+        n_order = np.unique(n_order)
+        poly_features = np.hstack((n_order, poly_features))
 
-    # initialize lists of regressors and covariances
-    regressors = []
-    covariances = []
+    if bias:
+        poly_features = np.hstack((poly_features, 1))
 
-    # for each level
-    for l in levels:
-
-        print ' - level {}'.format(l)
-
-        # obtain level's features
-        features = [f[l] for f in feature_pyramid]
-
-        aam._md_transform
-
-        for f in features:
-
-            aam.md_transform.target = f.landmarks[group][label].lms
-            p = aam.md_transform.as_vectors()
-
-            for k in range(n_perturbations):
-
-                global_transform = \
-                    align_with_noise(aam.shape_model.mean,
-                                     f.landmarks[group].lms, noise_std)
-
-                perturbed_landmarks = \
-                    global_transform.apply(aam.shape_model.mean)
-
-                aam.md_transform.target = perturbed_landmarks
-                p_k = aam.md_transform.as_vectors()
-
-                for w in regressors:
-
-                    regression_features = \
-                        aam.regression_features(f, perturbed_landmarks)
-
-                    delta_p = np.dot(w, regression_features)
-
-                    perturbed_landmarks = \
-                        aam.md_transform.from_vector(p_k + delta_p).target
-
-                    p_k = aam.md_transform.as_vectors()
+    return poly_features
 
 
-                delta_p = p - p_k
+def linear_regression(features, targets):
+    r"""
+
+    Parameters
+    ----------
+    features:
+    targets:
+
+    Returns
+    -------
+    w:
+    covariance:
+    """
+    covariance = np.dot(features.T, features)
+    covariance = (covariance + covariance.T) / 2
+    ft = np.dot(features.T, targets)
+    r = np.linalg.solve(covariance, ft)
+
+    return r, covariance
 
 
-        w, cov = linear_regression(regression_features, delta_p)
+def linear_regression_memory_efficient(features, targets):
+    r"""
 
-        p_k = np.dot(w, regression_features)
+    Parameters
+    ----------
+    features:
+    targets:
 
-        regressors.append(w)
-        covariances.append(cov)
+    Returns
+    -------
+    w:
+    covariance:
+    """
+    # number of independent variables
+    m = features.shape[1]
+    # number of dependent variables
+    k = targets.shape[1]
 
-    return 1
+    covariance = np.zeros((m, m))
+    ft = np.zeros((m, k))
+
+    for f, t in zip(features, targets):
+
+        covariance = covariance + np.dot(f[..., None], t[None, ...])
+        ft = ft + np.dot(f[..., None], t[None, ...])
+
+    covariance = (covariance + covariance.T) / 2
+    r = np.linalg.solve(covariance, ft)
+
+    return r, covariance
+
+
+class Regressor(object):
+
+    def __init__(self, reference_landmarks, order=1, noise_std=0.05,
+                 n_perturbations=10):
+        self.reference_landmarks = reference_landmarks
+        self.order = order
+        self.noise_std = noise_std
+        self.n_perturbations = n_perturbations
+
+        self.r = None
+        self.cov = None
+
+    def _perturb_landmarks(self, original_landmarks):
+
+        transform = noisy_align(self.reference_landmarks, original_landmarks,
+                                self.noise_std)
+
+        return transform.apply(self.reference_landmarks)
+
+    @abc.abstractmethod
+    def features(self, image, landmarks):
+        pass
+
+    def _polynomial_features(self, features):
+        return polynomial_features(features, self.order)
+
+    @abc.abstractmethod
+    def _delta_ps(self, original_landmarks, perturbed_landmarks):
+        pass
+
+    def _regression_data(self, images, original_landmarks):
+
+        n_images = len(images)
+        features = []
+        delta_ps = []
+        for j, (i, l) in enumerate(zip(images, original_landmarks)):
+            for _ in range(self.n_perturbations):
+                perturbed_landmarks = self._perturb_landmarks(l)
+                features.append(self.features(i, perturbed_landmarks))
+                delta_ps.append(self._delta_ps(l, perturbed_landmarks))
+            print(' - {} % '.format(round(100*(j+1)/n_images)),
+                  end='\r')
+
+        return np.asarray(features), np.asarray(delta_ps)
+
+    def train(self, images, original_landmarks):
+
+        print('- generating regression data')
+        features, delta_ps = self._regression_data(images, original_landmarks)
+
+        print('- performing regression')
+        self.r, self.cov = linear_regression(features, delta_ps)
+
+        # compute regression error
+        print('- computing regression error')
+        estimated_delta_ps = np.dot(features, self.r)
+        error = np.sqrt(np.mean(np.sum((delta_ps - estimated_delta_ps) ** 2,
+                                       axis=1)))
+        print(' - error = {}'.format(error))
+
+    @abc.abstractmethod
+    def align(self, image, initial_landmarks, **kwargs):
+        pass
+
+
+class ParametricRegressor(Regressor):
+
+    def __init__(self, appearance_model, transform, order=1,
+                 features='parameters', update='additive', noise_std=0.05,
+                 n_perturbations=10, interpolator='scipy'):
+
+        super(ParametricRegressor, self).__init__(
+            transform.source, order=order, noise_std=noise_std,
+            n_perturbations=n_perturbations)
+
+        self.appearance_model = appearance_model
+        self.template = appearance_model.mean
+        self.transform = transform
+
+        self._features = self._select_features(features)
+        self._update = self._select_update(update)
+        self._interpolator = interpolator
+
+    def _select_features(self, features):
+        if features is 'parameters':
+            return self._parameters
+        elif features is 'appearance':
+            return self._appearance
+        elif features is 'difference':
+            return self._difference
+        elif features is 'project_out':
+            return self._project_out
+        elif features is 'probabilistic':
+            return self._probabilistic
+        else:
+            raise ValueError('Unknown feature string selected. Valid'
+                             'options are: parameters, appearance, '
+                             'difference, project_out, probabilistic')
+
+    def _parameters(self, warped_image):
+        return self.appearance_model.project(warped_image)
+
+    def _appearance(self, warped_image):
+        return self.appearance_model.reconstruct(warped_image).as_vector()
+
+    def _difference(self, warped_image):
+        return warped_image.as_vector() - self._appearance(warped_image)
+
+    def _project_out(self, warped_image):
+        difference = (warped_image.as_vector() -
+                      self.appearance_model.mean.as_vector())
+        return self.appearance_model.distance_to_subspace_vector(
+            difference).flatten()
+
+    def _probabilistic(self, warped_image):
+        difference = (warped_image.as_vector() -
+                      self.appearance_model.mean.as_vector())
+        project_out = self.appearance_model.distance_to_subspace_vector(
+            difference).flatten()
+        return (project_out +
+                self.appearance_model.project_whitened_vector(
+                    difference).flatten())
+
+    def _select_update(self, update):
+        if update is 'additive':
+            return self._additive
+        elif update is 'compositional':
+            return self._compositional
+        else:
+            raise ValueError('Unknown update string selected. Valid'
+                             'options are: additive, compositional')
+
+    def _additive(self, delta_p):
+        return self.transform.from_vector(self.transform.as_vector() +
+                                          delta_p)
+
+    # TODO: Make this more efficient
+    def _compositional(self, delta_p):
+        return self.transform.compose_after(
+            self.transform.from_vector(delta_p))
+
+    def features(self, image, landmarks):
+        self.transform.target = landmarks
+        warped_image = image.warp_to(self.template.mask, self.transform,
+                                     interpolator=self._interpolator)
+        return self._polynomial_features(self._features(warped_image))
+
+    def _delta_ps(self, original_landmarks, perturbed_landmarks):
+        self.transform.target = original_landmarks
+        original_ps = self.transform.as_vector()
+        self.transform.target = perturbed_landmarks
+        perturbed_ps = self.transform.as_vector()
+        return original_ps - perturbed_ps
+
+    def align(self, image, initial_landmarks, **kwargs):
+        features = self.features(image, initial_landmarks)
+        delta_p = np.dot(features, self.r)
+        return self._update(delta_p)
+
+
+class NonParametricRegressor(Regressor):
+
+    def __init__(self, reference_landmarks, patch_size=(24, 24), order=1,
+                 noise_std=0.05, n_perturbations=10,
+                 features_dic={'type': 'raw'}):
+
+        super(NonParametricRegressor, self).__init__(
+            reference_landmarks, order=order, noise_std=noise_std,
+            n_perturbations=n_perturbations)
+
+        self.features_dic = features_dic
+        self._features = self._select_features(features_dic['type'])
+        self._patch_size = patch_size
+
+    def _select_features(self, features_type):
+        if features_type is 'raw':
+            return self._raw
+        elif features_type is 'norm':
+            return self._norm
+        elif features_type is 'igo':
+            return self._igo
+        elif features_type is 'hog':
+            return self._hog
+        elif features_type is 'sift':
+            return self._sift
+        elif features_type is 'lbp':
+            return self._lbp
+        else:
+            raise ValueError('Unknown feature string selected. Valid'
+                             'options are: igo, hogs, sift, lbp')
+
+    def _raw(self, patches):
+        return [p.as_vector() for p in patches]
+
+    def _norm(self, patches):
+        normalized_patches = []
+        for p in patches:
+            p.normalize_inplace(**self.features_dic['options'])
+            normalized_patches.append(p.as_vector())
+        return normalized_patches
+
+    def _igo(self, patches):
+        return [p.igos(**self.features_dic['options']).as_vector()
+                for p in patches]
+
+    def _hog(self, patches):
+        return [p.hogs(**self.features_dic['options']).as_vector()
+                for p in patches]
+
+    def _sift(self, patches):
+        raise NotImplementedError('Sift features not supported yet')
+
+    def _lbp(self, patches):
+        raise NotImplementedError('LBP features not supported yet')
+
+    def features(self, image, landmarks):
+        patches = extract_local_patches(
+            image, landmarks, patch_size=self._patch_size)
+        return np.asarray(self._features(patches)).flatten()
+
+    def _delta_ps(self, original_landmarks, perturbed_landmarks):
+        return (original_landmarks.as_vector() -
+                perturbed_landmarks.as_vector())
+
+    def align(self, image, initial_landmarks, **kwargs):
+        features = self.features(image, initial_landmarks)
+        delta_landmarks = np.dot(features, self.r)
+        return initial_landmarks.from_vector(initial_landmarks.as_vector() +
+                                             delta_landmarks)
+
+
