@@ -161,3 +161,117 @@ class ImageInverseCompositional(ImageLucasKanade):
             error = np.abs(norm(delta_p))
 
         return self.transform
+
+
+class ImageSymmetricCompositional(ImageLucasKanade):
+
+    def _precompute(self):
+        r"""
+        The Symmetric Compositional algorithm pre-computes the Jacobian of the
+        warp and the template steepest descent images . This are set as
+        attributes on the class.
+        """
+        # Compute the Jacobian of the warp
+        self._dW_dp = self.transform.jacobian(
+            self.template.mask.true_indices)
+
+        # Compute steepest descent images, VT_dW_dp
+        self._Jt = self.residual.steepest_descent_images(
+            self.template, self._dW_dp)
+
+    def _align(self, max_iters=50):
+        # Initial error > eps
+        error = self.eps + 1
+
+        # Forward Compositional Algorithm
+        while self.n_iters < (max_iters - 1) and error > self.eps:
+            # Compute warped image with current parameters
+            IWxp = self.image.warp_to(self.template.mask,
+                                      self.transform,
+                                      interpolator=self._interpolator)
+
+            # Compute steepest descent images, VI_dW_dp
+            Ji = self.residual.steepest_descent_images(IWxp, self._dW_dp)
+
+            # Compute symmetric steepest descent images
+            self._J = 0.5 * (Ji + self._Jt)
+
+            # Compute Hessian and inverse
+            self._H = self.residual.calculate_hessian(self._J)
+
+            # Compute steepest descent parameter updates
+            sd_delta_p = self.residual.steepest_descent_update(
+                self._J, self.template, IWxp)
+
+            # Compute gradient descent parameter updates
+            delta_p = 0.5 * np.real(self._calculate_delta_p(sd_delta_p))
+
+            # Update warp parameters
+            delta_transform = self.transform.from_vector(delta_p)
+            delta_transform.compose_after_from_vector_inplace(delta_p)
+            self.transform.compose_after_inplace(delta_transform)
+            self.parameters.append(self.transform.as_vector())
+
+            # Test convergence
+            error = np.abs(norm(delta_p))
+
+        return self.transform
+
+
+class ImageBidirectionalCompositional(ImageLucasKanade):
+
+    def _precompute(self):
+        r"""
+        The Bidirectional Compositional algorithm pre-computes the Jacobian
+        of the warp and the template steepest descent images . This are set as
+        attributes on the class.
+        """
+        # Compute the Jacobian of the warp
+        self._dW_dp = self.transform.jacobian(
+            self.template.mask.true_indices)
+
+        # Compute steepest descent images, VT_dW_dp
+        self._Jt = self.residual.steepest_descent_images(
+            self.template, self._dW_dp)
+
+    def _align(self, max_iters=50):
+        # Initial error > eps
+        error = self.eps + 1
+
+        # Number of shape parameters
+        n_params = self.transform.n_parameters
+
+        # Forward Compositional Algorithm
+        while self.n_iters < (max_iters - 1) and error > self.eps:
+            # Compute warped image with current parameters
+            IWxp = self.image.warp_to(self.template.mask,
+                                      self.transform,
+                                      interpolator=self._interpolator)
+
+            # Compute steepest descent images, VI_dW_dp
+            Ji = self.residual.steepest_descent_images(IWxp, self._dW_dp)
+
+            # Compute bidirectional steepest descent images
+            self._J = np.hstack((Ji, self._Jt))
+
+            # Compute Hessian and inverse
+            self._H = self.residual.calculate_hessian(self._J)
+
+            # Compute steepest descent parameter updates
+            sd_delta_p = self.residual.steepest_descent_update(
+                self._J, self.template, IWxp)
+
+            # Compute gradient descent parameter updates
+            delta_p = np.real(self._calculate_delta_p(sd_delta_p))
+
+            # Update warp parameters
+            delta_transform = self.transform.from_vector(delta_p[:n_params])
+            delta_transform.compose_after_from_vector_inplace(
+                delta_p[n_params:])
+            self.transform.compose_after_inplace(delta_transform)
+            self.parameters.append(self.transform.as_vector())
+
+            # Test convergence
+            error = np.abs(norm(delta_p))
+
+        return self.transform

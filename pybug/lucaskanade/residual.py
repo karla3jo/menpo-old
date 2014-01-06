@@ -200,10 +200,9 @@ class LSIntensity(Residual):
 
     def calculate_hessian(self, J, J2=None):
         if J2 is None:
-            H = J.T.dot(J)
-        else:
-            H = J.T.dot(J2)
-        return H
+            J2 = J
+
+        return J.T.dot(J2)
 
     def steepest_descent_update(self, sdi, IWxp, template):
         self._error_img = IWxp.as_vector() - template.as_vector()

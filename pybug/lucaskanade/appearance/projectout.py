@@ -5,7 +5,7 @@ from pybug.lucaskanade.appearance.base import AppearanceLucasKanade
 
 class ProjectOutForwardAdditive(AppearanceLucasKanade):
 
-    def _align(self, max_iters=30):
+    def _align(self, max_iters=50):
         # Initial error > eps
         error = self.eps + 1
 
@@ -57,7 +57,7 @@ class ProjectOutForwardCompositional(AppearanceLucasKanade):
         self._dW_dp = self.transform.jacobian(
             self.template.mask.true_indices)
 
-    def _align(self, max_iters=30):
+    def _align(self, max_iters=50):
         # Initial error > eps
         error = self.eps + 1
 
@@ -113,7 +113,7 @@ class ProjectOutInverseCompositional(AppearanceLucasKanade):
 
         pass
 
-    def _align(self, max_iters=30):
+    def _align(self, max_iters=50):
         # Initial error > eps
         error = self.eps + 1
 
@@ -136,6 +136,114 @@ class ProjectOutInverseCompositional(AppearanceLucasKanade):
 
             # Update warp parameters
             self.transform.compose_after_from_vector_inplace(inv_delta_p)
+            self.parameters.append(self.transform.as_vector())
+
+            # Test convergence
+            error = np.abs(norm(delta_p))
+
+        return self.transform
+
+
+class ProjectOutSymmetricCompositional(AppearanceLucasKanade):
+
+    def _precompute(self):
+        # Compute warp Jacobian
+        self._dW_dp = self.transform.jacobian(
+            self.template.mask.true_indices)
+
+        # Compute steepest descent images, VT_dW_dp
+        self._Jt = self.residual.steepest_descent_images(
+            self.template, self._dW_dp)
+
+        pass
+
+    def _align(self, max_iters=50):
+        # Initial error > eps
+        error = self.eps + 1
+
+        # Baker-Matthews, Inverse Compositional Algorithm
+        while self.n_iters < (max_iters - 1) and error > self.eps:
+            # Compute warped image with current parameters
+            IWxp = self.image.warp_to(self.template.mask,
+                                      self.transform,
+                                      interpolator=self._interpolator)
+
+            # Compute steepest descent images, VI_dW_dp
+            Ji = self.residual.steepest_descent_images(IWxp, self._dW_dp)
+
+            # Compute symmetric steepest descent images
+            self._J = 0.5 * (Ji + self._Jt)
+
+            # Compute steepest descent parameter updates
+            sd_delta_p = self.residual.steepest_descent_update(
+                self._J, IWxp, self.template)
+
+            # Compute gradient descent parameter updates
+            delta_p = np.real(self._calculate_delta_p(sd_delta_p))
+
+            # Compute gradient descent parameter updates
+            delta_p = 0.5 * np.real(self._calculate_delta_p(sd_delta_p))
+
+            # Update warp parameters
+            delta_transform = self.transform.from_vector(delta_p)
+            delta_transform.compose_after_from_vector_inplace(delta_p)
+            self.transform.compose_after_inplace(delta_transform)
+            self.parameters.append(self.transform.as_vector())
+
+            # Test convergence
+            error = np.abs(norm(delta_p))
+
+        return self.transform
+
+
+class ProjectOutBidirectionalCompositional(AppearanceLucasKanade):
+
+    def _precompute(self):
+        # Compute warp Jacobian
+        self._dW_dp = self.transform.jacobian(
+            self.template.mask.true_indices)
+
+        # Compute steepest descent images, VT_dW_dp
+        self._Jt = self.residual.steepest_descent_images(
+            self.template, self._dW_dp)
+
+        pass
+
+    def _align(self, max_iters=50):
+        # Initial error > eps
+        error = self.eps + 1
+
+        # Number of shape parameters
+        n_params = self.transform.n_parameters
+
+        # Baker-Matthews, Inverse Compositional Algorithm
+        while self.n_iters < (max_iters - 1) and error > self.eps:
+            # Compute warped image with current parameters
+            IWxp = self.image.warp_to(self.template.mask,
+                                      self.transform,
+                                      interpolator=self._interpolator)
+
+            # Compute steepest descent images, VI_dW_dp
+            Ji = self.residual.steepest_descent_images(IWxp, self._dW_dp)
+
+            # Compute bidirectional steepest descent images
+            self._J = np.hstack((Ji, self._Jt))
+
+            # Compute Hessian and inverse
+            self._H = self.residual.calculate_hessian(self._J)
+
+            # Compute steepest descent parameter updates
+            sd_delta_p = self.residual.steepest_descent_update(
+                self._J, self.template, IWxp)
+
+            # Compute gradient descent parameter updates
+            delta_p = np.real(self._calculate_delta_p(sd_delta_p))
+
+            # Update warp parameters
+            delta_transform = self.transform.from_vector(delta_p[:n_params])
+            delta_transform.compose_after_from_vector_inplace(
+                delta_p[n_params:])
+            self.transform.compose_after_inplace(delta_transform)
             self.parameters.append(self.transform.as_vector())
 
             # Test convergence
