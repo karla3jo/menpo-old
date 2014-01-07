@@ -6,6 +6,7 @@ from numpy.linalg.linalg import LinAlgError
 
 import scipy.io
 import numpy as np
+from pybug.lucaskanade.vector_utils import Spherical
 from pybug.transform import SimilarityTransform, Translation
 from pybug.lucaskanade.image import ImageInverseCompositional
 from pybug.image import MaskedNDImage, BooleanNDImage
@@ -26,15 +27,29 @@ def build_normal_image(image):
     n_image.from_vector_inplace(image.mesh.vertex_normals.ravel())
     return n_image
 
+def build_spher_image(image):
+    n_image = MaskedNDImage.blank(image.shape, mask=image.mask, n_channels=4)
+    normals = image.mesh.vertex_normals
+    spher = Spherical().logmap(normals)
+    n_image.from_vector_inplace(spher.ravel())
+    return n_image
+
 # <codecell>
 
 from pybug.lucaskanade import LSIntensity
+from pybug.lucaskanade.residual import LSIPNormalise, LSSpherNormalise, NormalInnerProductCorrelation
 
 def get_residual(option):
     if option == 'DEPTH':
-        return (lambda x: x, LSIntensity())
+        return (lambda x: x.as_depth_image(), LSIntensity())
     elif option == 'NORMAL':
         return (build_normal_image, LSIntensity())
+    elif option == 'IP_FS':
+        return (build_normal_image, LSIPNormalise())
+    elif option == 'SPHER_FS':
+        return (build_spher_image, LSSpherNormalise())
+    elif option == 'PQ_ECC':
+        return (lambda x: x.as_depth_image(), NormalInnerProductCorrelation())
     else:
         raise ValueError('Unknown algorithm option')
 
@@ -122,11 +137,11 @@ num_of_imgs_per_subj = len(expression_list)
 # Set up experiment variables
 verbose = False
 n_iters = 30                     # Number of gradient descent iterations
-n_freq_tests = 30               # Number of frequency of convergence tests
+n_freq_tests = 100               # Number of frequency of convergence tests
 max_spatial_error = 3.0          # Max location error for deciding convergence
-all_spc_sig = np.arange(1, 2)   # All spatial sigmas (1,10)
+all_spc_sig = np.arange(1, 11)   # All spatial sigmas (1,10)
 
-alg_list = ['DEPTH', 'NORMAL']
+alg_list = ['DEPTH', 'NORMAL', 'IP_FS', 'SPHER_FS']
 
 results = np.zeros([num_of_subjs, num_of_imgs_per_subj, len(all_spc_sig), len(alg_list)])
 
