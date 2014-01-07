@@ -156,7 +156,6 @@ class LucasKanade(object):
             The final transform that optimally aligns the source to the
             target.
         """
-        # TODO: define a consistent multi-resolution logic
         self.transform.from_vector_inplace(params)
         self.parameters = [params]
         self.image = image
