@@ -1,26 +1,30 @@
 from pybug.lucaskanade.appearance.adaptive import  \
     (AdaptiveForwardAdditive,
      AdaptiveForwardCompositional,
-     AdaptiveInverseCompositional)
+     AdaptiveInverseCompositional,
+     AdaptiveSymmetricCompositional,
+     AdaptiveBidirectionalCompositional)
 from pybug.lucaskanade.appearance.alternating import \
     (AlternatingForwardAdditive,
      AlternatingForwardCompositional,
-     AlternatingInverseCompositional)
+     AlternatingInverseCompositional,
+     AlternatingSymmetricCompositional,
+     AlternatingBidirectionalCompositional)
 from pybug.lucaskanade.appearance.probabilistic import \
     (ProbabilisticForwardAdditive,
      ProbabilisticForwardCompositional,
      ProbabilisticInverseCompositional,
-     ToSubspaceForwardAdditive,
-     ToSubspaceForwardCompositional,
-     ToSubspaceInverseCompositional,
-     WithinSubspaceForwardAdditive,
-     WithinSubspaceForwardCompositional,
-     WithinSubspaceInverseCompositional)
+     ProbabilisticSymmetricCompositional,
+     ProbabilisticBidirectionalCompositional)
 from pybug.lucaskanade.appearance.projectout import \
     (ProjectOutForwardAdditive,
      ProjectOutForwardCompositional,
-     ProjectOutInverseCompositional)
+     ProjectOutInverseCompositional,
+     ProjectOutSymmetricCompositional,
+     ProjectOutBidirectionalCompositional)
 from pybug.lucaskanade.appearance.simultaneous import \
     (SimultaneousForwardAdditive,
      SimultaneousForwardCompositional,
-     SimultaneousInverseCompositional)
+     SimultaneousInverseCompositional,
+     SimultaneousSymmetricCompositional,
+     SimultaneousBidirectionalCompositional)

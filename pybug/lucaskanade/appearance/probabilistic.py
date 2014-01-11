@@ -63,8 +63,6 @@ class ProbabilisticForwardCompositional(AppearanceLucasKanade):
         self._dW_dp = self.transform.jacobian(
             self.template.mask.true_indices)
 
-        pass
-
     def _align(self, max_iters=50, alpha=1):
         # Initial error > eps
         error = self.eps + 1
@@ -125,8 +123,6 @@ class ProbabilisticInverseCompositional(AppearanceLucasKanade):
         # Compute Hessian and inverse
         self._H = self.residual.calculate_hessian(self._J, J2=J)
 
-        pass
-
     def _align(self, max_iters=50):
         # Initial error > eps
         error = self.eps + 1
@@ -169,14 +165,12 @@ class ProbabilisticSymmetricCompositional(AppearanceLucasKanade):
         self._Jt = self.residual.steepest_descent_images(self.template,
                                                          self._dW_dp)
 
-        pass
-
     def _align(self, max_iters=50, alpha=1):
         # Initial error > eps
         error = self.eps + 1
 
         # Set relative weighting between distances
-        beta = alpha - 1
+        beta = 2 - alpha
 
         # Baker-Matthews, Inverse Compositional Algorithm
         while self.n_iters < (max_iters - 1) and error > self.eps:
@@ -191,7 +185,7 @@ class ProbabilisticSymmetricCompositional(AppearanceLucasKanade):
             # Compute symmetric steepest descent images
             J = 0.5 * (Ji + self._Jt)
 
-            # Project out appearance model from J
+            # Compute probabilistic steepest descent images
             self._J = (alpha *
                        self.appearance_model.distance_to_subspace_vector(J.T) +
                        beta *
@@ -202,10 +196,7 @@ class ProbabilisticSymmetricCompositional(AppearanceLucasKanade):
 
             # Compute steepest descent parameter updates
             sd_delta_p = self.residual.steepest_descent_update(
-                self._Jt, IWxp, self.template)
-
-            # Compute gradient descent parameter updates
-            delta_p = np.real(self._calculate_delta_p(sd_delta_p))
+                self._J, self.template, IWxp)
 
             # Compute gradient descent parameter updates
             delta_p = 0.5 * np.real(self._calculate_delta_p(sd_delta_p))
@@ -233,14 +224,12 @@ class ProbabilisticBidirectionalCompositional(AppearanceLucasKanade):
         self._Jt = self.residual.steepest_descent_images(self.template,
                                                          self._dW_dp)
 
-        pass
-
     def _align(self, max_iters=50, alpha=1):
         # Initial error > eps
         error = self.eps + 1
 
         # Set relative weighting between distances
-        beta = alpha - 1
+        beta = 2 - alpha
 
         # Number of shape parameters
         n_params = self.transform.n_parameters
@@ -258,7 +247,7 @@ class ProbabilisticBidirectionalCompositional(AppearanceLucasKanade):
             # Compute bidirectional steepest descent images
             J = np.hstack((Ji, self._Jt))
 
-            # Project out appearance model from J
+            # Compute probabilistic steepest descent images
             self._J = (alpha *
                        self.appearance_model.distance_to_subspace_vector(J.T) +
                        beta *
@@ -269,10 +258,7 @@ class ProbabilisticBidirectionalCompositional(AppearanceLucasKanade):
 
             # Compute steepest descent parameter updates
             sd_delta_p = self.residual.steepest_descent_update(
-                self._Jt, IWxp, self.template)
-
-            # Compute gradient descent parameter updates
-            delta_p = np.real(self._calculate_delta_p(sd_delta_p))
+                self._J, self.template, IWxp)
 
             # Compute gradient descent parameter updates
             delta_p = np.real(self._calculate_delta_p(sd_delta_p))

@@ -179,16 +179,13 @@ class AdaptiveInverseCompositional(AppearanceLucasKanade):
 
             # Compute steepest descent parameter updates
             sd_delta_p = self.residual.steepest_descent_update(
-                self._J, IWxp, self.template)
+                self._J, self.template, IWxp)
 
             # Compute gradient descent parameter updates
             delta_p = np.real(self._calculate_delta_p(sd_delta_p))
 
-            # Request the pesudoinverse vector from the transform
-            inv_delta_p = self.transform.pseudoinverse_vector(delta_p)
-
             # Update warp parameters
-            self.transform.compose_after_from_vector_inplace(inv_delta_p)
+            self.transform.compose_after_from_vector_inplace(delta_p)
             self.parameters.append(self.transform.as_vector())
 
             # Update appearance parameters
@@ -254,7 +251,7 @@ class AdaptiveSymmetricCompositional(AppearanceLucasKanade):
 
             # Compute steepest descent parameter updates
             sd_delta_p = self.residual.steepest_descent_update(
-                self._J, IWxp, self.template)
+                self._J, self.template, IWxp)
 
             # Compute gradient descent parameter updates
             delta_p = np.real(self._calculate_delta_p(sd_delta_p))
@@ -331,7 +328,7 @@ class AdaptiveBidirectionalCompositional(AppearanceLucasKanade):
 
             # Compute steepest descent parameter updates
             sd_delta_p = self.residual.steepest_descent_update(
-                self._J, IWxp, self.template)
+                self._J, self.template, IWxp)
 
             # Compute gradient descent parameter updates
             delta_p = np.real(self._calculate_delta_p(sd_delta_p))

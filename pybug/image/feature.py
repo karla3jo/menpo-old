@@ -26,11 +26,13 @@ class Feature2DImage(MaskedNDImage):
     ValueError
         Mask is not the same shape as the image
     """
-    def blank(cls):
-        r"""
-        Replaces the blank function of the MaskedNDImage.
-        """
-        pass
+
+    # TODO: This causes problems when warping feature images
+    # def blank(cls):
+    #     r"""
+    #     Replaces the blank function of the MaskedNDImage.
+    #     """
+    #     pass
 
     def _view(self, figure_id=None, new_figure=False, channels=None,
               masked=True, glyph=True, vectors_block_size=10,
@@ -455,7 +457,7 @@ class FeatureExtraction(object):
     r"""
     Class that given an image object, it adds the feature extraction
     functionality of Feature2DImage class. The feature extraction also includes
-    potential correction of landmarks. Currently it is used by Abstract2DImage
+    potential correction of landmarks. Currently it is used by MaskedNDImage
     class.
 
     Parameters

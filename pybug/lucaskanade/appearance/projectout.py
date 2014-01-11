@@ -126,16 +126,13 @@ class ProjectOutInverseCompositional(AppearanceLucasKanade):
 
             # Compute steepest descent parameter updates
             sd_delta_p = self.residual.steepest_descent_update(
-                self._J, IWxp, self.template)
+                self._J, self.template, IWxp)
 
             # Compute gradient descent parameter updates
             delta_p = np.real(self._calculate_delta_p(sd_delta_p))
 
-            # Request the pesudoinverse vector from the transform
-            inv_delta_p = self.transform.pseudoinverse_vector(delta_p)
-
             # Update warp parameters
-            self.transform.compose_after_from_vector_inplace(inv_delta_p)
+            self.transform.compose_after_from_vector_inplace(delta_p)
             self.parameters.append(self.transform.as_vector())
 
             # Test convergence
@@ -148,14 +145,11 @@ class ProjectOutSymmetricCompositional(AppearanceLucasKanade):
 
     def _precompute(self):
         # Compute warp Jacobian
-        self._dW_dp = self.transform.jacobian(
-            self.template.mask.true_indices)
+        self._dW_dp = self.transform.jacobian(self.template.mask.true_indices)
 
         # Compute steepest descent images, VT_dW_dp
-        self._Jt = self.residual.steepest_descent_images(
-            self.template, self._dW_dp)
-
-        pass
+        self._Jt = self.residual.steepest_descent_images(self.template,
+                                                         self._dW_dp)
 
     def _align(self, max_iters=50):
         # Initial error > eps
@@ -172,14 +166,17 @@ class ProjectOutSymmetricCompositional(AppearanceLucasKanade):
             Ji = self.residual.steepest_descent_images(IWxp, self._dW_dp)
 
             # Compute symmetric steepest descent images
-            self._J = 0.5 * (Ji + self._Jt)
+            J = 0.5 * (Ji + self._Jt)
+
+            # Project out appearance model from J
+            self._J = self.appearance_model.project_out_vectors(J.T).T
+
+            # Compute Hessian and inverse
+            self._H = self.residual.calculate_hessian(self._J)
 
             # Compute steepest descent parameter updates
             sd_delta_p = self.residual.steepest_descent_update(
-                self._J, IWxp, self.template)
-
-            # Compute gradient descent parameter updates
-            delta_p = np.real(self._calculate_delta_p(sd_delta_p))
+                self._J, self.template, IWxp)
 
             # Compute gradient descent parameter updates
             delta_p = 0.5 * np.real(self._calculate_delta_p(sd_delta_p))
@@ -227,7 +224,10 @@ class ProjectOutBidirectionalCompositional(AppearanceLucasKanade):
             Ji = self.residual.steepest_descent_images(IWxp, self._dW_dp)
 
             # Compute bidirectional steepest descent images
-            self._J = np.hstack((Ji, self._Jt))
+            J = np.hstack((Ji, self._Jt))
+
+            # Project out appearance model from J
+            self._J = self.appearance_model.project_out_vectors(J.T).T
 
             # Compute Hessian and inverse
             self._H = self.residual.calculate_hessian(self._J)

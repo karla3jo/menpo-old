@@ -209,6 +209,82 @@ class LSIntensity(Residual):
         return sdi.T.dot(self._error_img)
 
 
+class Robust(LSIntensity):
+
+    def __init__(self, noise_variance=1):
+        self._noise_variance = noise_variance
+        self._noise_std = np.sqrt(noise_variance)
+
+    def calculate_hessian(self, J):
+        return np.dot(self._weighted_sdi.T, J)
+
+    def steepest_descent_update(self, sdi, IWxp, template):
+        self._error_img = IWxp.as_vector() - template.as_vector()
+        Q = self._weights()
+        self._weighted_sdi = Q[..., None] * sdi
+
+        return np.dot(self._weighted_sdi.T, self._error_img)
+
+    @abc.abstractmethod
+    def _weights(self):
+        pass
+
+
+class Fair(Robust):
+
+    def _weights(self):
+        c = 1.3998
+        return 1 / (1 + np.abs(self._error_img) / (c * self._noise_std))
+
+
+class L1L2(Robust):
+
+    def _weights(self):
+        return (self._noise_std /
+                np.sqrt(self._noise_variance + self._error_img**2 / 2))
+
+
+class GemanMcClure(Robust):
+
+    def _weights(self):
+        return (self._noise_variance /
+               (self._noise_variance + self._error_img**2) ** 2)
+
+
+class Cauchy(Robust):
+
+    def _weights(self):
+        c = 2.3849
+        return 1 / (1 + (self._error_img / (c * self._noise_std)) ** 2)
+
+
+class Welsch(Robust):
+
+    def _weights(self):
+        c = 2.9846
+        return np.exp(- (self._error_img / (c * self._noise_std)) ** 2)
+
+
+class Huber(Robust):
+
+    def _weights(self):
+        c = 1.2107
+        Q = np.ones_like(self._error_img)
+        ind = self._error_img**2 > (c * self._noise_std) ** 2
+        Q[ind] = c * self._noise_std / np.abs(self._error_img[ind])
+        return Q
+
+
+class Turkey(Robust):
+
+    def _weights(self):
+        c = 4.685
+        Q = np.zeros_like(self._error_img)
+        ind = self._error_img**2 > (c * self._noise_std) ** 2
+        Q[ind] = (1 - (self._error_img / (c * self._noise_std)) ** 2) ** 2
+        return Q
+
+
 class GaborFourier(Residual):
 
     def __init__(self, image_shape, **kwargs):

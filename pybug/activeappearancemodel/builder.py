@@ -230,7 +230,7 @@ def gaussian_pyramid(image, n_levels=None, downscale=2, sigma=None, order=1,
     # the current .squeeze() on image_data does not work properly when
     # max_layer=-1 for IntensityImages, due to the special way in which this
     # image class is constructed (removing the channel axis).
-    pyramid = [image.__class__(image_data,
+    pyramid = [image.__class__(image_data.squeeze(axis=(2,)),
                                mask=mask_data.squeeze(axis=(2,)))
                for image_data, mask_data in zip(image_iterator,
                                                 mask_iterator)]
@@ -245,7 +245,7 @@ def gaussian_pyramid(image, n_levels=None, downscale=2, sigma=None, order=1,
 
 # TODO: Should this be a method on SimilarityTransform?
 # and in Transforms in general?
-def align_with_noise(source, target, noise_std):
+def noisy_align(source, target, noise_std=0.05, rotation=False):
     r"""
 
     Parameters
@@ -253,27 +253,21 @@ def align_with_noise(source, target, noise_std):
     source :
     target :
     noise_std:
+    rotation:
 
     Returns
     -------
     noisy_transform :
     """
     transform = SimilarityTransform.align(source, target)
-
-    if noise_std is None:
-        noise_std = np.ones(transform.n_parameters)
-
-    # sample noise from a normal distribution with mean = 0 and
-    # std = noise_std
-    param = np.hstack((transform.as_vector()[:1], 0, target.range()))
-    noise = param * noise_std * np.random.randn(transform.n_parameters)
-
-    param = transform.as_vector()
-    param[1] = 0
-    param += noise
-
-    # return noisy transform
-    return SimilarityTransform.from_vector(param)
+    parameters = transform.as_vector()
+    if not rotation:
+        parameters[1] = 0
+    parameter_range = np.hstack((parameters[:2], target.range()))
+    noise = (parameter_range * noise_std *
+             np.random.randn(transform.n_parameters))
+    parameters += noise
+    return SimilarityTransform.from_vector(parameters)
 
 
 def compute_features(image, feature_type, **kwargs):
@@ -292,11 +286,14 @@ def compute_features(image, feature_type, **kwargs):
     if feature_type is 'norm':
         image.normalize_inplace(**kwargs)
     elif feature_type is 'igo':
-        return image.features.igos(**kwargs)
+        image = image.features.igo(**kwargs)
     elif feature_type is 'hog':
-        return image.features.hogs(**kwargs)
+        image = image.features.hog(**kwargs)
 
-    return image
+    nd_image = MaskedNDImage(image.pixels, mask=image.mask)
+    nd_image.landmarks = image.landmarks
+
+    return nd_image
 
 
 def compute_mean_pointcloud(pointcloud_list):
@@ -394,8 +391,22 @@ def aam_builder(images, group='PTS', label='all', interpolator='scipy',
                                              label=label,
                                              interpolator=interpolator)
               for i in images]
+
+    # TODO:
+    print '- Building gaussian pyramid'
+    # build gaussian pyramids
+    images_pyramid = [gaussian_pyramid(i, n_levels=n_levels) for i in images]
+
+    # TODO:
+    print '- Computing features'
+    # compute features
+    images_pyramid = [[compute_features(i, features['type'],
+                                        **features['options'])
+                       for i in images]
+                      for images in images_pyramid]
+
     # extract rescaled shapes
-    shapes = [i.landmarks[group][label].lms for i in images]
+    shapes = [i[0].landmarks[group][label].lms for i in images_pyramid]
 
     # TODO:
     print '- Building shape model'
@@ -434,11 +445,6 @@ def aam_builder(images, group='PTS', label='all', interpolator='scipy',
         for i in images:
                 i.constrain_mask_to_landmarks(group=group, trilist=trilist)
 
-    # TODO:
-    print '- Building gaussian pyramids'
-    # build gaussian pyramids
-    images_pyramid = [gaussian_pyramid(i, n_levels=n_levels) for i in images]
-
     # free memory
     del images, aligned_shapes, gpa, centered_shapes, shapes
 
@@ -451,10 +457,7 @@ def aam_builder(images, group='PTS', label='all', interpolator='scipy',
         print ' - Level {}'.format(j)
         # obtain level images
         images_level = [p[j] for p in images_pyramid]
-        # compute features
-        images_level = [compute_features(i, features['type'],
-                                         **features['options'])
-                        for i in images_level]
+
         # compute transforms
         transforms = [transform_cls(reference_frame.landmarks['source'].lms,
                                     i.landmarks[group].lms)

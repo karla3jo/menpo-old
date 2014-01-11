@@ -123,12 +123,12 @@ class AlternatingInverseCompositional(AppearanceLucasKanade):
             self._J = self.residual.steepest_descent_images(self.template,
                                                             self._dW_dp)
 
-            # Compute Hessian and inverse
-            self._H = self.residual.calculate_hessian(self._J)
-
             # Compute steepest descent parameter updates
             sd_delta_p = self.residual.steepest_descent_update(
                 self._J, IWxp, self.template)
+
+            # Compute Hessian and inverse
+            self._H = self.residual.calculate_hessian(self._J)
 
             # Compute gradient descent parameter updates
             delta_p = np.real(self._calculate_delta_p(sd_delta_p))
@@ -179,12 +179,12 @@ class AlternatingSymmetricCompositional(AppearanceLucasKanade):
             # Compute symmetric steepest descent images
             self._J = 0.5 * (Ji + Jt)
 
-            # Compute Hessian and inverse
-            self._H = self.residual.calculate_hessian(self._J)
-
             # Compute steepest descent parameter updates
             sd_delta_p = self.residual.steepest_descent_update(
                 self._J, self.template, IWxp)
+
+            # Compute Hessian and inverse
+            self._H = self.residual.calculate_hessian(self._J)
 
             # Compute gradient descent parameter updates
             delta_p = 0.5 * np.real(self._calculate_delta_p(sd_delta_p))

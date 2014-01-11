@@ -2,7 +2,8 @@ from __future__ import division
 import numpy as np
 from copy import deepcopy
 import matplotlib.pylab as plt
-from pybug.transform .affine import Scale, SimilarityTransform, UniformScale
+from pybug.transform .affine import Scale, SimilarityTransform, \
+    UniformScale, AffineTransform
 from pybug.transform.modeldriven import OrthoMDTransform
 from pybug.transform.piecewiseaffine import PiecewiseAffineTransform
 from pybug.transform.tps import TPS
@@ -12,7 +13,7 @@ from pybug.activeappearancemodel.accuracy import compute_error_facesize
 from pybug.activeappearancemodel.builder import \
     build_reference_frame, build_patch_reference_frame, \
     rescale_to_reference_landmarks, gaussian_pyramid, compute_features, \
-    align_with_noise
+    noisy_align
 
 
 class AAM(object):
@@ -140,7 +141,8 @@ class AAM(object):
                       transform_cls=PiecewiseAffineTransform,
                       global_transform_cls=SimilarityTransform,
                       lk_algorithm=AlternatingInverseCompositional,
-                      residual=LSIntensity, n_shape=None, n_appearance=None):
+                      residual_dic={'type': LSIntensity, 'options': None},
+                      n_shape=None, n_appearance=None):
         r"""
         Initialize a particular Lucas-Kanade algorithm for fitting this AAM
         onto images.
@@ -179,11 +181,15 @@ class AAM(object):
                                             global_transform,
                                             source=source)
 
-            am = deepcopy(am)
             if n_appearance is not None:
                 am.n_active_components = n_a
 
-            self._lk_pyramid.append(lk_algorithm(am, residual(),
+            if residual_dic['options'] is None:
+                residual = residual_dic['type']()
+            else:
+                residual = residual_dic['type'](**residual_dic['options'])
+
+            self._lk_pyramid.append(lk_algorithm(am, residual,
                                                  md_transform))
 
     def _lk_fit(self, image_pyramid, initial_landmarks, max_iters=20):
@@ -239,26 +245,30 @@ class AAM(object):
         md_transform_pyramid:
         """
 
-        if verbose:
-            original_landmarks = image.landmarks[group].lms
-
         scale = 2 ** (self.n_levels-1)
 
         feature_pyramid = self._feature_pyramid(image, self.shape_model.mean)
 
+        original_landmarks = image.landmarks[group].lms
+
+        affine_correction = AffineTransform.align(
+            feature_pyramid[-1].landmarks[group].lms, original_landmarks)
+
         optimal_transforms = []
         for j in range(runs):
-            transform = align_with_noise(
+            transform = noisy_align(
                 self.shape_model.mean, feature_pyramid[0].landmarks[group].lms,
-                noise_std)
+                noise_std=noise_std)
             initial_landmarks = transform.apply(self.shape_model.mean)
             optimal_transforms.append(self._lk_fit(feature_pyramid,
                                                    initial_landmarks,
                                                    max_iters=max_iters))
             fitted_landmarks = optimal_transforms[j][-1].target
+            fitted_landmarks = affine_correction.apply(fitted_landmarks)
 
             image.landmarks['initial_{}'.format(j)] = \
-                UniformScale(scale, 2).apply(initial_landmarks)
+                affine_correction.apply(UniformScale(scale, 2).apply(
+                    initial_landmarks))
             image.landmarks['fitted_{}'.format(j)] = fitted_landmarks
 
             if verbose:
@@ -267,8 +277,8 @@ class AAM(object):
                 print ' - run {} of {} with error: {}'.format(j+1, runs,
                                                               error)
             if view:
-                image.landmarks['initial_{}'.format(j)].view()
-                image.landmarks['fitted_{}'.format(j)].view()
+                image.landmarks['fitted_{}'.format(j)].view(
+                    include_labels=False)
                 plt.show()
 
         return optimal_transforms
