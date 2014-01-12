@@ -146,7 +146,7 @@ class SpatialImageImporter(Importer):
 
         try:
             return path.join(self.folder, self.relative_mesh_landmark_path)
-        except AttributeError:
+        except (AttributeError, TypeError) as e:
             return None
 
     @property
@@ -171,7 +171,7 @@ class SpatialImageImporter(Importer):
 
         try:
             return path.join(self.folder, self.relative_texture_path)
-        except AttributeError:
+        except (AttributeError, TypeError) as e:
             return None
 
     @abc.abstractmethod

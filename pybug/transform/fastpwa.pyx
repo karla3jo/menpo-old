@@ -1,6 +1,5 @@
 # distutils: language = c
 # distutils: sources = ./pybug/transform/fastpwa/pwa.c
-# distutils: extra_compile_args = -std=c99
 
 import numpy as np
 cimport numpy as cnp
