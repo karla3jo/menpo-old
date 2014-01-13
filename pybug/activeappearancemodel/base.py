@@ -1,7 +1,7 @@
 from __future__ import division
 import numpy as np
 from copy import deepcopy
-import matplotlib.pylab as plt
+import matplotlib.pyplot as plt
 from pybug.transform .affine import Scale, SimilarityTransform, \
     UniformScale, AffineTransform
 from pybug.transform.modeldriven import OrthoMDTransform
