@@ -283,11 +283,11 @@ def compute_features(image, feature_type, **kwargs):
     -------
     feature_image :
     """
-    if feature_type is 'norm':
+    if feature_type == 'norm':
         image.normalize_inplace(**kwargs)
-    elif feature_type is 'igo':
+    elif feature_type == 'igo':
         image = image.features.igo(**kwargs)
-    elif feature_type is 'hog':
+    elif feature_type == 'hog':
         image = image.features.hog(**kwargs)
 
     nd_image = MaskedNDImage(image.pixels, mask=image.mask)
