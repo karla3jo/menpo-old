@@ -231,7 +231,7 @@ class SpatialImageImporter(Importer):
                                 trilist=self.trilist, tcoords=self.tcoords,
                                 texture=texture)
 
-        if self.image_landmark_importer is not None:
+        if texture is not None and self.image_landmark_importer is not None:
             lmark_group = self.image_landmark_importer.build(
                 scale_factors=self.image.shape)
             label = lmark_group.group_label

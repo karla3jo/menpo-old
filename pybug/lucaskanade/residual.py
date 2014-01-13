@@ -26,6 +26,7 @@ from numpy.fft import fftshift, fftn
 import scipy.linalg
 from pybug.convolution import log_gabor
 from pybug.image import MaskedNDImage
+from pybug.lucaskanade.vector_utils import normalise_vector, Spherical
 
 
 class Residual(object):
@@ -206,6 +207,98 @@ class LSIntensity(Residual):
 
     def steepest_descent_update(self, sdi, IWxp, template):
         self._error_img = IWxp.as_vector() - template.as_vector()
+        return sdi.T.dot(self._error_img)
+
+
+class LSIPNormalise(Residual):
+
+    def steepest_descent_images(self, image, dW_dp, forward=None):
+        i = image.as_vector(keep_channels=True)
+        i = normalise_vector(i)
+
+        image.from_vector_inplace(i)
+        # compute gradient
+        # gradient:  height  x  width  x  (n_channels x n_dims)
+        gradient = self._calculate_gradients(image, forward=forward)
+
+        # reshape gradient
+        # gradient:  n_pixels  x  (n_channels x n_dims)
+        gradient = gradient.as_vector(keep_channels=True)
+
+        # reshape gradient
+        # gradient:  n_pixels  x  n_channels  x  n_dims
+        gradient = np.reshape(gradient, (-1, image.n_channels,
+                                         image.n_dims))
+
+        # compute steepest descent images
+        # gradient:  n_pixels  x  n_channels  x            x  n_dims
+        # dW_dp:     n_pixels  x              x  n_params  x  n_dims
+        # sdi:       n_pixels  x  n_channels  x  n_params
+        sdi = np.sum(dW_dp[:, None, :, :] * gradient[:, :, None, :], axis=3)
+
+        # reshape steepest descent images
+        # sdi:  (n_pixels x n_channels)  x  n_params
+        return np.reshape(sdi, (-1, dW_dp.shape[1]))
+
+    def calculate_hessian(self, J, J2=None):
+        if J2 is None:
+            H = J.T.dot(J)
+        else:
+            H = J.T.dot(J2)
+        return H
+
+    def steepest_descent_update(self, sdi, IWxp, template):
+        I = IWxp.as_vector(keep_channels=True)
+        I = normalise_vector(I)
+        self._error_img = I.ravel() - template.as_vector()
+        return sdi.T.dot(self._error_img)
+
+
+class LSSpherNormalise(Residual):
+
+    def steepest_descent_images(self, image, dW_dp, forward=None):
+        i = image.as_vector(keep_channels=True)
+        i = np.squeeze(Spherical().expmap(i))
+        i = normalise_vector(i)
+        i = np.squeeze(Spherical().logmap(i))
+        image.from_vector_inplace(i)
+
+        # compute gradient
+        # gradient:  height  x  width  x  (n_channels x n_dims)
+        gradient = self._calculate_gradients(image, forward=forward)
+
+        # reshape gradient
+        # gradient:  n_pixels  x  (n_channels x n_dims)
+        gradient = gradient.as_vector(keep_channels=True)
+
+        # reshape gradient
+        # gradient:  n_pixels  x  n_channels  x  n_dims
+        gradient = np.reshape(gradient, (-1, image.n_channels,
+                                         image.n_dims))
+
+        # compute steepest descent images
+        # gradient:  n_pixels  x  n_channels  x            x  n_dims
+        # dW_dp:     n_pixels  x              x  n_params  x  n_dims
+        # sdi:       n_pixels  x  n_channels  x  n_params
+        sdi = np.sum(dW_dp[:, None, :, :] * gradient[:, :, None, :], axis=3)
+
+        # reshape steepest descent images
+        # sdi:  (n_pixels x n_channels)  x  n_params
+        return np.reshape(sdi, (-1, dW_dp.shape[1]))
+
+    def calculate_hessian(self, J, J2=None):
+        if J2 is None:
+            H = J.T.dot(J)
+        else:
+            H = J.T.dot(J2)
+        return H
+
+    def steepest_descent_update(self, sdi, IWxp, template):
+        I = IWxp.as_vector(keep_channels=True)
+        I = np.squeeze(Spherical().expmap(I))
+        I = normalise_vector(I)
+        I = np.squeeze(Spherical().logmap(I))
+        self._error_img = I.ravel() - template.as_vector()
         return sdi.T.dot(self._error_img)
 
 
@@ -668,3 +761,136 @@ class GradientCorrelation(Residual):
         # sdu:           n_parameters
         # weighted_sdu:  n_parameters
         return l * sdu
+
+
+class NormalInnerProductCorrelation(Residual):
+
+    def _normal_image(self, image):
+        normals = image.mesh.vertex_normals
+        normal_image = MaskedNDImage.blank(image.shape, mask=image.mask,
+                                           n_channels=3)
+        normal_image.from_vector_inplace(normals)
+        return normal_image
+
+    def steepest_descent_images(self, image, dW_dp, forward=None):
+        n_dims = image.n_dims
+
+        # compute gradient
+        # gradient:  height  x  width  x  (n_channels x n_dims)
+        gradient_img = self._calculate_gradients(image)
+
+        # reshape gradient
+        # first_grad:  n_pixels  x  (n_channels x n_dims)
+        first_grad = gradient_img.as_vector(keep_channels=True)
+
+        first_grad = np.reshape(first_grad, (-1, image.n_channels,
+                                             image.n_dims))
+
+        x_squared = first_grad[..., 1] ** 2
+        y_squared = first_grad[..., 0] ** 2
+        denom = np.sqrt(x_squared + y_squared + 1)
+
+        first_grad[..., 0] /= (denom + 0.0000001)
+        first_grad[..., 1] /= (denom + 0.0000001)
+        z_value = np.ones_like(first_grad[..., 1]) / (denom + 0.0000001)
+        first_grad = np.concatenate([first_grad, z_value[..., None]], axis=2)
+
+        x_squared = first_grad[..., 1] ** 2
+        y_squared = first_grad[..., 0] ** 2
+        denom = np.sqrt(x_squared + y_squared + 1) ** 3
+
+        # g1x:       n_pixels  x  3
+        self._g1x = (y_squared + 1) / (denom + 0.0000001)
+        self._g1y = (x_squared + 1) / (denom + 0.0000001)
+
+        # compute IGOs gradient
+        # second_grad:  height  x  width  x  (n_channels x n_dims x n_dims)
+        g = MaskedNDImage.blank(gradient_img.shape, mask=gradient_img.mask, n_channels=3)
+        g.from_vector_inplace(first_grad.ravel())
+        second_grad = self._calculate_gradients(g)
+
+        # reshape gradient
+        # second_grad:  n_pixels  x  (n_channels x n_dims)
+        second_grad = second_grad.as_vector(keep_channels=True)
+
+        second_grad = np.reshape(second_grad, (-1, 3,
+                                               n_dims, n_dims))
+
+        # Fix crossed derivatives: dydx = dxdy
+        # second_grad[:, 0] = second_grad[0, 4]
+        # Fix crossed derivatives: dydz = dzdy
+        # second_grad[:, :, 1, 0] = second_grad[:, :, 0, 1]
+        # Fix crossed derivatives: dzdx = dxdz
+        # second_grad[:, :, 1, 0] = second_grad[:, :, 0, 1]
+
+        # complete full IGOs gradient computation
+        # second_grad:  n_pixels  x  n_channels  x  n_dims  x  n_dims
+        second_grad[..., 1] = self._g1x.reshape([-1, 2])[:, None, :] * second_grad[..., 1]
+        second_grad[..., 0] = self._g1y.reshape([-1, 2])[:, None, :] * second_grad[..., 0]
+
+        # compute steepest descent images
+        # second_grad: n_pixels  x  n_channels  x            x n_dims x n_dims
+        # dW_dp:       n_pixels  x              x  n_params  x n_dims x
+        # sdi:         n_pixels  x  n_channels  x  n_params
+        sdi = np.sum(np.sum(dW_dp[:, None, :, :, None] *
+                            second_grad[:, :, None, :, :], axis=3), axis=3)
+
+        # reshape steepest descent images
+        # sdi:  (n_pixels x n_channels)  x  n_params
+        return np.reshape(sdi, (-1, dW_dp.shape[1]))
+
+    def calculate_hessian(self, sdi):
+        # compute hessian
+        # sdi:      (n_pixels x n_channels x n_dims)  x  n_parameters
+        # hessian:             n_parameters           x  n_parameters
+        H = sdi.T.dot(sdi)
+        self._H_inv = scipy.linalg.inv(H)
+        return H
+
+    def steepest_descent_update(self, sdi, IWxp, template):
+        # compute IWxp gradient
+        # IWxp_gradient:  height  x  width  x  (n_channels x n_dims)
+        normalised_IWxp = self._calculate_gradients(IWxp).as_vector(keep_channels=True)
+        x_squared = normalised_IWxp[..., 1] ** 2
+        y_squared = normalised_IWxp[..., 0] ** 2
+        denom = np.sqrt(x_squared + y_squared + 1)
+
+        normalised_IWxp[:, 0] /= (denom + 0.0000001)
+        normalised_IWxp[:, 1] /= (denom + 0.0000001)
+        z_value = np.ones_like(normalised_IWxp[:, 0]) / (denom + 0.0000001)
+        normalised_IWxp = np.concatenate([normalised_IWxp, z_value], axis=1).ravel()
+
+        normalised_template = self._calculate_gradients(template).as_vector(keep_channels=True)
+        x_squared = normalised_template[..., 1] ** 2
+        y_squared = normalised_template[..., 0] ** 2
+        denom = np.sqrt(x_squared + y_squared + 1)
+
+        normalised_template[:, 0] /= (denom + 0.0000001)
+        normalised_template[:, 1] /= (denom + 0.0000001)
+        z_value = np.ones_like(normalised_template[:, 0]) / (denom + 0.0000001)
+        normalised_template = np.concatenate([normalised_template, z_value], axis=1).ravel()
+
+
+        Gt = sdi.T.dot(normalised_template)
+        Gw = sdi.T.dot(normalised_IWxp)
+
+        # Calculate the numerator
+        IWxp_norm = scipy.linalg.norm(normalised_IWxp)
+        num = (IWxp_norm ** 2) - np.dot(Gw.T, np.dot(self._H_inv, Gw))
+
+        # Calculate the denominator
+        den1 = np.dot(normalised_template, normalised_IWxp)
+        den2 = np.dot(Gt.T, np.dot(self._H_inv, Gw))
+        den = den1 - den2
+
+        # Calculate lambda to choose the step size
+        # Avoid division by zero
+        if den > 0:
+            l = num / den
+        else:
+            # TODO: Should be other step described in paper
+            l = 0
+
+        self._error_img = l * normalised_IWxp - normalised_template
+
+        return sdi.T.dot(self._error_img)

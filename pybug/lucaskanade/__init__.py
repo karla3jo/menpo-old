@@ -35,4 +35,5 @@ from pybug.lucaskanade.residual import \
      ECC,
      GaborFourier,
      GradientImages,
-     GradientCorrelation)
+     GradientCorrelation,
+     NormalInnerProductCorrelation)

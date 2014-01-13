@@ -1,4 +1,5 @@
 import abc
+from numpy.linalg import LinAlgError
 import numpy as np
 from scipy.linalg import solve
 

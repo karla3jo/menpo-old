@@ -7,7 +7,8 @@ import collections
 
 def auto_import(pattern, meshes=True, images=True,
                 include_texture_images=False,
-                max_meshes=None, max_images=None):
+                max_meshes=None, max_images=None,
+                verbose=True):
     r"""
     Smart data importer. Will match all files found on the glob pattern
     passed in, build the relevant importers, and then call ``build()`` on them
@@ -65,13 +66,16 @@ def auto_import(pattern, meshes=True, images=True,
     """
     mesh_objects, image_objects = [], []
     if meshes:
-        mesh_paths = _glob_matching_extension(pattern, mesh_types)
+        mesh_paths = _glob_matching_extension(pattern, mesh_types,
+                                              verbose=verbose)
         if max_meshes:
             mesh_paths = mesh_paths[:max_meshes]
         mesh_objects, mesh_importers = _multi_mesh_import(mesh_paths,
-                                                          keep_importers=True)
+                                                          keep_importers=True,
+                                                          verbose=verbose)
     if images:
-        image_files = _glob_matching_extension(pattern, all_image_types)
+        image_files = _glob_matching_extension(pattern, all_image_types,
+                                               verbose=verbose)
         if max_images:
             image_files = image_files[:max_images]
         if meshes and not include_texture_images:
@@ -79,12 +83,12 @@ def auto_import(pattern, meshes=True, images=True,
                              if m.texture_path is not None]
             image_files = _images_unrelated_to_meshes(image_files,
                                                       texture_paths)
-            image_objects = _multi_image_import(image_files)
+            image_objects = _multi_image_import(image_files, verbose=verbose)
 
     return mesh_objects + image_objects
 
 
-def _multi_image_import(image_filepaths, keep_importers=False):
+def _multi_image_import(image_filepaths, keep_importers=False, verbose=True):
     r"""
     Creates importers for all the image filepaths passed in,
     and then calls build on them, returning a list of
@@ -105,10 +109,11 @@ def _multi_image_import(image_filepaths, keep_importers=False):
         ``True`` then the importer for each image is returned as a tuple of s
         lists.
     """
-    return _multi_import(image_filepaths, all_image_types, keep_importers)
+    return _multi_import(image_filepaths, all_image_types, keep_importers,
+                         verbose=verbose)
 
 
-def _multi_mesh_import(mesh_filepaths, keep_importers=False):
+def _multi_mesh_import(mesh_filepaths, keep_importers=False, verbose=True):
     r"""
     Creates importers for all the mesh filepaths passed in,
     and then calls build on them, returning a list of
@@ -130,7 +135,8 @@ def _multi_mesh_import(mesh_filepaths, keep_importers=False):
         ``True`` then the importer for each mesh is returned as a tuple of
         lists.
     """
-    result = _multi_import(mesh_filepaths, mesh_types, keep_importers)
+    result = _multi_import(mesh_filepaths, mesh_types, keep_importers,
+                           verbose=verbose)
     # meshes come back as a nested list - unpack this for convenience
     if keep_importers:
         meshes = result[0]
@@ -298,7 +304,8 @@ def get_importer(path, extensions_map):
                                                               e.message))
 
 
-def _multi_import(filepaths, extensions_map, keep_importers=False):
+def _multi_import(filepaths, extensions_map, keep_importers=False,
+                  verbose=True):
     r"""
     Creates importers for all the filepaths passed in, and then calls build on
     them, returning a list of objects. Expects every file type in the filepaths
@@ -338,15 +345,15 @@ def _multi_import(filepaths, extensions_map, keep_importers=False):
         else:
             built_objects.filepath = importer.filepath
         objects.append(built_objects)
-
-        # Cheeky carriage return so we print on the same line
-        sys.stdout.write('\rCreating importer for %s (%d of %d)'
-                         % (repr(importer), i + 1, object_count))
+        if verbose:
+            # Cheeky carriage return so we print on the same line
+            sys.stdout.write('\rCreating importer for %s (%d of %d)'
+                             % (repr(importer), i + 1, object_count))
+            sys.stdout.flush()
+    if verbose:
+        # New line to clear for the next print
+        sys.stdout.write('\n')
         sys.stdout.flush()
-
-    # New line to clear for the next print
-    sys.stdout.write('\n')
-    sys.stdout.flush()
 
     if keep_importers:
         return objects, importers
@@ -354,7 +361,7 @@ def _multi_import(filepaths, extensions_map, keep_importers=False):
         return objects
 
 
-def _glob_matching_extension(pattern, extensions_map):
+def _glob_matching_extension(pattern, extensions_map, verbose=True):
     r"""
     Filters the results from the glob pattern passed in to only those files
     that have an importer given in ``extensions_map``.
@@ -379,9 +386,9 @@ def _glob_matching_extension(pattern, extensions_map):
     files = glob(os.path.expanduser(pattern))
     exts = [os.path.splitext(f)[1] for f in files]
     matches = [ext in extensions_map for ext in exts]
-
-    print 'Found {0} files. ({1}/{0}) are importable'.format(
-        len(exts), len(filter(lambda x: x, matches)))
+    if verbose:
+        print 'Found {0} files. ({1}/{0}) are importable'.format(
+            len(exts), len(filter(lambda x: x, matches)))
 
     return [f for f, does_match in zip(files, matches)
             if does_match]
