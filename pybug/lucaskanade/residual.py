@@ -210,51 +210,27 @@ class LSIntensity(Residual):
         return sdi.T.dot(self._error_img)
 
 
-class LSIPNormalise(Residual):
+class LSIPNormalise(LSIntensity):
 
     def steepest_descent_images(self, image, dW_dp, forward=None):
         i = image.as_vector(keep_channels=True)
         i = normalise_vector(i)
-
         image.from_vector_inplace(i)
-        # compute gradient
-        # gradient:  height  x  width  x  (n_channels x n_dims)
-        gradient = self._calculate_gradients(image, forward=forward)
 
-        # reshape gradient
-        # gradient:  n_pixels  x  (n_channels x n_dims)
-        gradient = gradient.as_vector(keep_channels=True)
-
-        # reshape gradient
-        # gradient:  n_pixels  x  n_channels  x  n_dims
-        gradient = np.reshape(gradient, (-1, image.n_channels,
-                                         image.n_dims))
-
-        # compute steepest descent images
-        # gradient:  n_pixels  x  n_channels  x            x  n_dims
-        # dW_dp:     n_pixels  x              x  n_params  x  n_dims
-        # sdi:       n_pixels  x  n_channels  x  n_params
-        sdi = np.sum(dW_dp[:, None, :, :] * gradient[:, :, None, :], axis=3)
-
-        # reshape steepest descent images
-        # sdi:  (n_pixels x n_channels)  x  n_params
-        return np.reshape(sdi, (-1, dW_dp.shape[1]))
-
-    def calculate_hessian(self, J, J2=None):
-        if J2 is None:
-            H = J.T.dot(J)
-        else:
-            H = J.T.dot(J2)
-        return H
+        return LSIntensity.steepest_descent_images(self,
+                                                   image,
+                                                   dW_dp,
+                                                   forward=forward)
 
     def steepest_descent_update(self, sdi, IWxp, template):
         I = IWxp.as_vector(keep_channels=True)
         I = normalise_vector(I)
-        self._error_img = I.ravel() - template.as_vector()
-        return sdi.T.dot(self._error_img)
+        IWxp.from_vector_inplace(I)
+
+        return LSIntensity.steepest_descent_update(self, sdi, IWxp, template)
 
 
-class LSSpherNormalise(Residual):
+class LSSpherNormalise(LSIntensity):
 
     def steepest_descent_images(self, image, dW_dp, forward=None):
         i = image.as_vector(keep_channels=True)
@@ -263,43 +239,19 @@ class LSSpherNormalise(Residual):
         i = np.squeeze(Spherical().logmap(i))
         image.from_vector_inplace(i)
 
-        # compute gradient
-        # gradient:  height  x  width  x  (n_channels x n_dims)
-        gradient = self._calculate_gradients(image, forward=forward)
-
-        # reshape gradient
-        # gradient:  n_pixels  x  (n_channels x n_dims)
-        gradient = gradient.as_vector(keep_channels=True)
-
-        # reshape gradient
-        # gradient:  n_pixels  x  n_channels  x  n_dims
-        gradient = np.reshape(gradient, (-1, image.n_channels,
-                                         image.n_dims))
-
-        # compute steepest descent images
-        # gradient:  n_pixels  x  n_channels  x            x  n_dims
-        # dW_dp:     n_pixels  x              x  n_params  x  n_dims
-        # sdi:       n_pixels  x  n_channels  x  n_params
-        sdi = np.sum(dW_dp[:, None, :, :] * gradient[:, :, None, :], axis=3)
-
-        # reshape steepest descent images
-        # sdi:  (n_pixels x n_channels)  x  n_params
-        return np.reshape(sdi, (-1, dW_dp.shape[1]))
-
-    def calculate_hessian(self, J, J2=None):
-        if J2 is None:
-            H = J.T.dot(J)
-        else:
-            H = J.T.dot(J2)
-        return H
+        return LSIntensity.steepest_descent_images(self,
+                                                   image,
+                                                   dW_dp,
+                                                   forward=forward)
 
     def steepest_descent_update(self, sdi, IWxp, template):
         I = IWxp.as_vector(keep_channels=True)
         I = np.squeeze(Spherical().expmap(I))
         I = normalise_vector(I)
         I = np.squeeze(Spherical().logmap(I))
-        self._error_img = I.ravel() - template.as_vector()
-        return sdi.T.dot(self._error_img)
+        IWxp.from_vector_inplace(I)
+
+        return LSIntensity.steepest_descent_update(self, sdi, IWxp, template)
 
 
 class Robust(LSIntensity):
